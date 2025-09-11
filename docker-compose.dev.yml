@@ -1,0 +1,571 @@
+# =============================================================================
+# POCKET POS - Development Environment Docker Compose Override
+# =============================================================================
+# Development-specific overrides for docker-compose.yml
+# Optimized for local development workflow with hot reload, debugging, and testing
+
+# =============================================================================
+# DEVELOPMENT SERVICES OVERRIDES
+# =============================================================================
+services:
+
+  # ---------------------------------------------------------------------------
+  # DATABASE SERVICES - DEVELOPMENT OVERRIDES
+  # ---------------------------------------------------------------------------
+  
+  postgres:
+    environment:
+      POSTGRES_DB: pocket_pos_dev
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+      POSTGRES_MULTIPLE_DATABASES: pocket_pos_dev,pocket_pos_test
+    ports:
+      - "47821:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./docker/postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./docker/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      # Development: Enable query logging
+      - ./docker/postgres/dev-logging.conf:/etc/postgresql/conf.d/dev-logging.conf:ro
+    command: [
+      "postgres",
+      "-c", "config_file=/etc/postgresql/postgresql.conf",
+      "-c", "hba_file=/etc/postgresql/pg_hba.conf",
+      "-c", "log_statement=all",
+      "-c", "log_min_duration_statement=0",
+      "-c", "log_line_prefix=%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h "
+    ]
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+
+  redis:
+    environment:
+      REDIS_PASSWORD: redis123
+    ports:
+      - "58392:6379"
+    volumes:
+      - redis_dev_data:/data
+      - ./docker/redis/redis.conf:/etc/redis/redis.conf:ro
+    # Development: Enable Redis CLI access and verbose logging
+    command: [
+      "redis-server", 
+      "/etc/redis/redis.conf", 
+      "--requirepass", "redis123",
+      "--loglevel", "verbose",
+      "--save", "60", "1000"
+    ]
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.25'
+
+  # ---------------------------------------------------------------------------
+  # MESSAGE QUEUE SERVICES - DEVELOPMENT OVERRIDES
+  # ---------------------------------------------------------------------------
+
+  zookeeper:
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      # Development: Reduced timeouts for faster startup
+      ZOOKEEPER_INIT_LIMIT: 5
+      ZOOKEEPER_SYNC_LIMIT: 2
+      ZOOKEEPER_MAX_CLIENT_CNXNS: 60
+    ports:
+      - "55374:2181"
+    volumes:
+      - zookeeper_dev_data:/var/lib/zookeeper/data
+      - zookeeper_dev_logs:/var/lib/zookeeper/log
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.25'
+
+  kafka:
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:55374
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:54629
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:54629
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      KAFKA_DELETE_TOPIC_ENABLE: 'true'
+      # Development: Shorter retention for faster testing
+      KAFKA_LOG_RETENTION_HOURS: 24
+      KAFKA_LOG_RETENTION_BYTES: 536870912
+      KAFKA_LOG_SEGMENT_BYTES: 536870912
+      KAFKA_NUM_PARTITIONS: 1
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+      # Development: Enable JMX for monitoring
+      KAFKA_JMX_PORT: 9999
+      KAFKA_JMX_HOSTNAME: localhost
+    ports:
+      - "54629:9092"
+      - "56485:29092"
+      - "58999:9999"  # JMX port for monitoring
+    volumes:
+      - kafka_dev_data:/var/lib/kafka/data
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+
+  # ---------------------------------------------------------------------------
+  # APPLICATION SERVICES - DEVELOPMENT OVERRIDES
+  # ---------------------------------------------------------------------------
+
+  api:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+      target: development  # Use development stage
+      args:
+        BUILD_DATE: ${BUILD_DATE:-$(date -u +'%Y-%m-%dT%H:%M:%SZ')}
+        VCS_REF: ${VCS_REF:-dev}
+        VERSION: ${VERSION:-dev}
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      DATABASE_URL: postgresql://postgres:postgres123@postgres:5432/pocket_pos_dev
+      REDIS_URL: redis://:redis123@redis:6379
+      KAFKA_BROKERS: kafka:29092
+      JWT_SECRET: dev-jwt-secret-change-in-production
+      JWT_EXPIRES_IN: 7d
+      BCRYPT_ROUNDS: 10  # Reduced for faster development
+      API_PREFIX: api/v1
+      CORS_ORIGIN: "*"  # Allow all origins in development
+      RATE_LIMIT_TTL: 60
+      RATE_LIMIT_LIMIT: 1000  # Higher limit for development
+      FILE_UPLOAD_DEST: ./uploads
+      MAX_FILE_SIZE: 52428800  # 50MB for development
+      SMTP_HOST: smtp.gmail.com
+      SMTP_PORT: 587
+      SMTP_USER: dev@pocketpos.com
+      SMTP_PASS: dev-password
+      LOG_LEVEL: debug
+      # Development: Enable debugging
+      DEBUG: "*"
+      NODE_OPTIONS: "--inspect=0.0.0.0:9229"
+    volumes:
+      # Development: Mount source code for hot reload
+      - ./server:/app:cached
+      - /app/node_modules
+      - api_dev_uploads:/app/uploads
+      - api_dev_logs:/app/logs
+    ports:
+      - "39847:3000"
+      - "48392:9229"  # Debug port
+    # Development: Override command for hot reload
+    command: ["npm", "run", "start:dev"]
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+
+  web:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+      target: development  # Use development stage
+      args:
+        BUILD_DATE: ${BUILD_DATE:-$(date -u +'%Y-%m-%dT%H:%M:%SZ')}
+        VCS_REF: ${VCS_REF:-dev}
+        VERSION: ${VERSION:-dev}
+        NEXT_PUBLIC_API_URL: http://localhost:39847/api/v1
+        NEXT_PUBLIC_WS_URL: ws://localhost:39847
+        NEXT_PUBLIC_APP_ENV: development
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      NEXT_TELEMETRY_DISABLED: 1
+      # Development: Enable debugging
+      DEBUG: "*"
+      NEXT_PUBLIC_API_URL: http://localhost:39847/api/v1
+      NEXT_PUBLIC_WS_URL: ws://localhost:39847
+      NEXT_PUBLIC_APP_ENV: development
+    volumes:
+      # Development: Mount source code for hot reload
+      - ./client:/app:cached
+      - /app/node_modules
+      - /app/.next
+      - web_dev_logs:/app/logs
+    ports:
+      - "41923:3000"
+      - "59483:9229"  # Debug port
+    # Development: Override command for hot reload
+    command: ["npm", "run", "dev"]
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+
+  mobile:
+    build:
+      context: ./mobile-app
+      dockerfile: Dockerfile
+      target: development  # Use development stage
+      args:
+        BUILD_DATE: ${BUILD_DATE:-$(date -u +'%Y-%m-%dT%H:%M:%SZ')}
+        VCS_REF: ${VCS_REF:-dev}
+        VERSION: ${VERSION:-dev}
+        EXPO_TOKEN: ${EXPO_TOKEN}
+        EAS_PROJECT_ID: ${EAS_PROJECT_ID}
+    environment:
+      NODE_ENV: development
+      EXPO_DEVTOOLS_LISTEN_ADDRESS: 0.0.0.0
+      REACT_NATIVE_PACKAGER_HOSTNAME: 0.0.0.0
+      EXPO_PUBLIC_API_URL: http://localhost:39847/api/v1
+      EXPO_PUBLIC_WS_URL: ws://localhost:39847
+      # Development: Enable debugging
+      DEBUG: "*"
+      EXPO_DEBUG: 1
+    volumes:
+      # Development: Mount source code for hot reload
+      - ./mobile-app:/app:cached
+      - /app/node_modules
+      - mobile_dev_logs:/app/logs
+      - mobile_dev_expo:/app/.expo
+    ports:
+      - "52764:8081"    # Metro bundler
+      - "53851:19000"  # Expo CLI
+      - "54928:19001"  # Expo CLI
+      - "55039:19002"  # Expo DevTools
+      - "56140:19006"  # Expo web
+    # Development: Override command for tunnel mode
+    command: ["npx", "expo", "start", "--tunnel", "--dev-client"]
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+
+  # ---------------------------------------------------------------------------
+  # DEVELOPMENT TOOLS AND UTILITIES
+  # ---------------------------------------------------------------------------
+
+  # PostgreSQL Admin (pgAdmin)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pocket-pos-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@pocketpos.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
+    volumes:
+      - pgadmin_dev_data:/var/lib/pgadmin
+      - ./docker/pgadmin/servers.json:/pgadmin4/servers.json:ro
+    ports:
+      - "58050:80"
+    networks:
+      - pocket-pos-network
+    depends_on:
+      - postgres
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.25'
+
+  # Redis Admin (RedisInsight)
+  redis-insight:
+    image: redislabs/redisinsight:latest
+    container_name: pocket-pos-redis-insight
+    restart: unless-stopped
+    volumes:
+      - redis_insight_data:/db
+    ports:
+      - "58001:8001"
+    networks:
+      - pocket-pos-network
+    depends_on:
+      - redis
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.25'
+
+  # Kafka UI (for Kafka management)
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: pocket-pos-kafka-ui
+    restart: unless-stopped
+    environment:
+      KAFKA_CLUSTERS_0_NAME: pocket-pos-dev
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:55374
+      KAFKA_CLUSTERS_0_READONLY: false
+    ports:
+      - "58080:8080"
+    networks:
+      - pocket-pos-network
+    depends_on:
+      - kafka
+      - zookeeper
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.25'
+
+  # Mailhog (for email testing)
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: pocket-pos-mailhog
+    restart: unless-stopped
+    ports:
+      - "58025:1025"  # SMTP port
+      - "58026:8025"  # Web UI port
+    networks:
+      - pocket-pos-network
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.1'
+
+  # File browser (for file management)
+  filebrowser:
+    image: filebrowser/filebrowser:latest
+    container_name: pocket-pos-filebrowser
+    restart: unless-stopped
+    environment:
+      FB_BASEURL: /files
+    volumes:
+      - ./data:/srv:ro
+      - filebrowser_config:/config
+      - filebrowser_database:/database
+    ports:
+      - "58082:80"
+    networks:
+      - pocket-pos-network
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.1'
+
+# =============================================================================
+# DEVELOPMENT VOLUMES
+# =============================================================================
+volumes:
+  # Development-specific volumes
+  postgres_dev_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/dev/postgres
+  
+  redis_dev_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/dev/redis
+  
+  zookeeper_dev_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/dev/zookeeper/data
+  
+  zookeeper_dev_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/dev/zookeeper/logs
+  
+  kafka_dev_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/dev/kafka
+  
+  api_dev_uploads:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/dev/uploads
+  
+  api_dev_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/dev/logs/api
+  
+  web_dev_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/dev/logs/web
+  
+  mobile_dev_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/dev/logs/mobile
+  
+  mobile_dev_expo:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/dev/expo
+  
+  # Development tools volumes
+  pgadmin_dev_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/dev/pgadmin
+  
+  redis_insight_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/dev/redis-insight
+  
+  filebrowser_config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/dev/filebrowser/config
+  
+  filebrowser_database:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/dev/filebrowser/database
+
+# =============================================================================
+# DEVELOPMENT DOCKER COMPOSE COMMANDS
+# =============================================================================
+#
+# Start development environment:
+# docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+#
+# Start with build:
+# docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+#
+# Start specific services:
+# docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d postgres redis api
+#
+# View logs with follow:
+# docker-compose -f docker-compose.yml -f docker-compose.dev.yml logs -f api
+#
+# Execute commands:
+# docker-compose -f docker-compose.yml -f docker-compose.dev.yml exec api npm run migration:run
+# docker-compose -f docker-compose.yml -f docker-compose.dev.yml exec postgres psql -U postgres -d pocket_pos_dev
+#
+# Stop development environment:
+# docker-compose -f docker-compose.yml -f docker-compose.dev.yml down
+#
+# Stop and remove volumes:
+# docker-compose -f docker-compose.yml -f docker-compose.dev.yml down -v
+#
+# =============================================================================
+
+# =============================================================================
+# DEVELOPMENT ENVIRONMENT ACCESS
+# =============================================================================
+#
+# Application URLs:
+# - API: http://localhost:39847
+# - Web Client: http://localhost:41923
+# - Mobile (Expo): http://localhost:85039
+#
+# Development Tools:
+# - pgAdmin: http://localhost:58050 (admin@pocketpos.com / admin123)
+# - Redis Insight: http://localhost:58001
+# - Kafka UI: http://localhost:58080
+# - Mailhog: http://localhost:58026
+# - File Browser: http://localhost:58082
+#
+# Database Connections:
+# - PostgreSQL: localhost:47821 (postgres / postgres123)
+# - Redis: localhost:58392 (password: redis123)
+# - Kafka: localhost:54629
+#
+# Debug Ports:
+# - API Debug: localhost:48392
+# - Web Debug: localhost:59483
+# - Kafka JMX: localhost:58999
+#
+# =============================================================================
+
+# =============================================================================
+# DEVELOPMENT WORKFLOW
+# =============================================================================
+#
+# 1. Initial Setup:
+#    - Copy .env.dev to .env
+#    - Run: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+#    - Wait for all services to be healthy
+#
+# 2. Development:
+#    - Code changes trigger hot reload automatically
+#    - Use debug ports for debugging (9229, 9230)
+#    - Monitor logs: docker-compose logs -f <service>
+#
+# 3. Database Management:
+#    - Access pgAdmin at http://localhost:58050
+#    - Run migrations: docker-compose exec api npm run migration:run
+#    - Seed data: docker-compose exec api npm run seed
+#
+# 4. Testing:
+#    - Unit tests: docker-compose exec api npm test
+#    - E2E tests: docker-compose exec web npm run test:e2e
+#    - Mobile tests: docker-compose exec mobile npm test
+#
+# 5. Debugging:
+#    - Attach debugger to ports 9229 (API) or 9230 (Web)
+#    - Use Redis Insight for cache debugging
+#    - Use Kafka UI for message queue debugging
+#    - Use Mailhog for email testing
+#
+# =============================================================================
+
+# =============================================================================
+# PERFORMANCE OPTIMIZATIONS FOR DEVELOPMENT
+# =============================================================================
+#
+# 1. Volume caching for better performance on macOS/Windows
+# 2. Reduced resource limits for faster startup
+# 3. Hot reload enabled for all applications
+# 4. Debug ports exposed for all services
+# 5. Development tools included for easier debugging
+# 6. Shorter retention periods for faster testing
+# 7. Verbose logging enabled for troubleshooting
+# 8. Auto-creation of topics and databases
+# 9. Relaxed security settings for easier development
+# 10. File browser for easy file management
+#
+# =============================================================================
