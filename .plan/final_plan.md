@@ -7,7 +7,7 @@ Performance targets: p95 line-add <100 ms UI add and <300 ms server confirm on m
 
 Extensibility: Clear service boundaries, optional microservice split later; adapters for identity and payments.
 
-Auditability: Double-entry accounting; immutable event logs for inventory, cash, and payments.
+Auditability: Accounting; immutable event logs for inventory, cash, and payments.
 
 Commercial control: No offline checkout; checkout requires live server confirmation to ensure integrity and enforce subscriptions.
 
