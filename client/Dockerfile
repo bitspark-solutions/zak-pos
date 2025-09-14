@@ -7,7 +7,7 @@
 # =============================================================================
 # STAGE 1: Base Dependencies
 # =============================================================================
-FROM node:18-alpine AS base
+FROM node:22.19.0-alpine3.21 AS base
 
 # Set working directory
 WORKDIR /app
@@ -125,8 +125,10 @@ RUN npm ci
 # Copy source code
 COPY . .
 
-# Create logs directory
-RUN mkdir -p /app/logs && chown nextjs:nodejs /app/logs
+# Create necessary directories with proper permissions
+RUN mkdir -p /app/logs && \
+    mkdir -p /app/.next && \
+    chown -R nextjs:nodejs /app
 
 # Switch to non-root user
 USER nextjs
@@ -140,7 +142,7 @@ CMD ["npm", "run", "dev"]
 # =============================================================================
 # STAGE 6: Static Export (for CDN deployment)
 # =============================================================================
-FROM nginx:alpine AS static
+FROM nginx:1.27-alpine3.21 AS static
 
 # Copy static files from build stage
 COPY --from=build /app/out /usr/share/nginx/html

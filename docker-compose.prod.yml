@@ -14,13 +14,13 @@ services:
   # ---------------------------------------------------------------------------
   
   postgres:
-    image: postgres:15-alpine
-    container_name: pocket-pos-postgres-prod
+    image: postgres:17.6-alpine3.21
+    container_name: zakpos-postgres-prod
     restart: always
     ports:
       - "47821:5432"
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-pocket_pos}
+      POSTGRES_DB: ${POSTGRES_DB:-zakpos}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
@@ -44,7 +44,7 @@ services:
       "-c", "log_lock_waits=on"
     ]
     networks:
-      - pocket-pos-backend
+      - zakpos-backend
     deploy:
       resources:
         limits:
@@ -72,8 +72,8 @@ services:
       - /var/run/postgresql
 
   redis:
-    image: redis:7-alpine
-    container_name: pocket-pos-redis-prod
+    image: redis:7.4.4-alpine3.21
+    container_name: zakpos-redis-prod
     restart: always
     ports:
       - "58392:6379"
@@ -93,7 +93,7 @@ services:
       "--save", "60", "10000"
     ]
     networks:
-      - pocket-pos-backend
+      - zakpos-backend
     deploy:
       resources:
         limits:
@@ -124,8 +124,8 @@ services:
   # ---------------------------------------------------------------------------
 
   zookeeper:
-    image: confluentinc/cp-zookeeper:7.4.0
-    container_name: pocket-pos-zookeeper-prod
+    image: confluentinc/cp-zookeeper:7.6.0
+    container_name: zakpos-zookeeper-prod
     restart: always
     ports:
       - "55374:2181"
@@ -143,7 +143,7 @@ services:
       - zookeeper_prod_data:/var/lib/zookeeper/data
       - zookeeper_prod_logs:/var/lib/zookeeper/log
     networks:
-      - pocket-pos-backend
+      - zakpos-backend
     deploy:
       resources:
         limits:
@@ -167,15 +167,15 @@ services:
       - no-new-privileges:true
 
   kafka:
-    image: confluentinc/cp-kafka:7.4.0
-    container_name: pocket-pos-kafka-prod
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: zakpos-kafka-prod
     restart: always
     ports:
       - "54629:9092"
       - "56485:29092"
     environment:
       KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:55374
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://${KAFKA_EXTERNAL_HOST:-localhost}:54629
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:54629
@@ -204,10 +204,12 @@ services:
       KAFKA_FETCH_PURGATORY_PURGE_INTERVAL_REQUESTS: 1000
       KAFKA_PRODUCER_PURGATORY_PURGE_INTERVAL_REQUESTS: 1000
       KAFKA_JVM_OPTS: "-Xmx1g -Xms1g"
+      # Fix for broker registration issues
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
     volumes:
       - kafka_prod_data:/var/lib/kafka/data
     networks:
-      - pocket-pos-backend
+      - zakpos-backend
     depends_on:
       zookeeper:
         condition: service_healthy
@@ -246,7 +248,7 @@ services:
         BUILD_DATE: ${BUILD_DATE}
         VCS_REF: ${VCS_REF}
         VERSION: ${VERSION}
-    image: pocket-pos/api:${VERSION:-latest}
+    image: zakpos/api:${VERSION:-latest}
     restart: always
     ports:
       - "39847:3000"
@@ -255,7 +257,7 @@ services:
       PORT: 3000
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
-      KAFKA_BROKERS: kafka:56485
+      KAFKA_BROKERS: kafka:29092
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-24h}
       BCRYPT_ROUNDS: ${BCRYPT_ROUNDS:-12}
@@ -285,8 +287,8 @@ services:
       - api_prod_uploads:/app/uploads
       - api_prod_logs:/app/logs
     networks:
-      - pocket-pos-frontend
-      - pocket-pos-backend
+      - zakpos-frontend
+      - zakpos-backend
     depends_on:
       postgres:
         condition: service_healthy
@@ -341,7 +343,7 @@ services:
         NEXT_PUBLIC_APP_ENV: production
         NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN}
         NEXT_PUBLIC_GOOGLE_ANALYTICS_ID: ${NEXT_PUBLIC_GOOGLE_ANALYTICS_ID}
-    image: pocket-pos/web:${VERSION:-latest}
+    image: zakpos/web:${VERSION:-latest}
     restart: always
     ports:
       - "41923:3000"
@@ -359,7 +361,7 @@ services:
     volumes:
       - web_prod_logs:/app/logs
     networks:
-      - pocket-pos-frontend
+      - zakpos-frontend
     depends_on:
       - api
     deploy:
@@ -400,8 +402,8 @@ services:
   # ---------------------------------------------------------------------------
 
   nginx:
-    image: nginx:1.25-alpine
-    container_name: pocket-pos-nginx-prod
+    image: nginx:1.27-alpine3.21
+    container_name: zakpos-nginx-prod
     restart: always
     volumes:
       - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
@@ -413,7 +415,7 @@ services:
       - "58071:80"
       - "58443:443"
     networks:
-      - pocket-pos-frontend
+      - zakpos-frontend
     depends_on:
       - api
       - web
@@ -449,7 +451,7 @@ services:
 
   prometheus:
     image: prom/prometheus:latest
-    container_name: pocket-pos-prometheus-prod
+    container_name: zakpos-prometheus-prod
     restart: always
     ports:
       - "52764:9090"
@@ -465,8 +467,8 @@ services:
       - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_prod_data:/prometheus
     networks:
-      - pocket-pos-monitoring
-      - pocket-pos-backend
+      - zakpos-monitoring
+      - zakpos-backend
     deploy:
       resources:
         limits:
@@ -480,7 +482,7 @@ services:
 
   grafana:
     image: grafana/grafana:latest
-    container_name: pocket-pos-grafana-prod
+    container_name: zakpos-grafana-prod
     restart: always
     ports:
       - "58851:3000"
@@ -496,7 +498,7 @@ services:
       - ./docker/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
       - ./docker/grafana/datasources:/etc/grafana/provisioning/datasources:ro
     networks:
-      - pocket-pos-monitoring
+      - zakpos-monitoring
     depends_on:
       - prometheus
     deploy:
@@ -515,20 +517,20 @@ services:
   # ---------------------------------------------------------------------------
 
   backup:
-    image: postgres:15-alpine
-    container_name: pocket-pos-backup-prod
+    image: postgres:17.6-alpine3.21
+    container_name: zakpos-backup-prod
     restart: "no"
     environment:
       PGPASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_HOST: postgres
-      POSTGRES_DB: ${POSTGRES_DB:-pocket_pos}
+      POSTGRES_DB: ${POSTGRES_DB:-zakpos}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
     volumes:
       - postgres_prod_backups:/backups
       - ./scripts/backup.sh:/backup.sh:ro
     networks:
-      - pocket-pos-backend
+      - zakpos-backend
     depends_on:
       postgres:
         condition: service_healthy
@@ -545,26 +547,26 @@ services:
 # PRODUCTION NETWORKS
 # =============================================================================
 networks:
-  pocket-pos-frontend:
+  zakpos-frontend:
     driver: bridge
     driver_opts:
-      com.docker.network.bridge.name: pocket-pos-frontend
+      com.docker.network.bridge.name: zakpos-frontend
     ipam:
       config:
         - subnet: 172.20.0.0/24
   
-  pocket-pos-backend:
+  zakpos-backend:
     driver: bridge
     driver_opts:
-      com.docker.network.bridge.name: pocket-pos-backend
+      com.docker.network.bridge.name: zakpos-backend
     ipam:
       config:
         - subnet: 172.21.0.0/24
   
-  pocket-pos-monitoring:
+  zakpos-monitoring:
     driver: bridge
     driver_opts:
-      com.docker.network.bridge.name: pocket-pos-monitoring
+      com.docker.network.bridge.name: zakpos-monitoring
     ipam:
       config:
         - subnet: 172.22.0.0/24
@@ -579,21 +581,21 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: ${DATA_PATH:-/opt/pocket-pos}/data/postgres
+      device: ${DATA_PATH:-/opt/zakpos}/data/postgres
   
   postgres_prod_backups:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: ${BACKUP_PATH:-/opt/pocket-pos}/backups/postgres
+      device: ${BACKUP_PATH:-/opt/zakpos}/backups/postgres
   
   redis_prod_data:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: ${DATA_PATH:-/opt/pocket-pos}/data/redis
+      device: ${DATA_PATH:-/opt/zakpos}/data/redis
   
   # Message queue volumes
   zookeeper_prod_data:
@@ -601,21 +603,21 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: ${DATA_PATH:-/opt/pocket-pos}/data/zookeeper/data
+      device: ${DATA_PATH:-/opt/zakpos}/data/zookeeper/data
   
   zookeeper_prod_logs:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: ${DATA_PATH:-/opt/pocket-pos}/data/zookeeper/logs
+      device: ${DATA_PATH:-/opt/zakpos}/data/zookeeper/logs
   
   kafka_prod_data:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: ${DATA_PATH:-/opt/pocket-pos}/data/kafka
+      device: ${DATA_PATH:-/opt/zakpos}/data/kafka
   
   # Application volumes
   api_prod_uploads:
@@ -623,21 +625,21 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: ${DATA_PATH:-/opt/pocket-pos}/data/uploads
+      device: ${DATA_PATH:-/opt/zakpos}/data/uploads
   
   api_prod_logs:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: ${LOGS_PATH:-/opt/pocket-pos}/logs/api
+      device: ${LOGS_PATH:-/opt/zakpos}/logs/api
   
   web_prod_logs:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: ${LOGS_PATH:-/opt/pocket-pos}/logs/web
+      device: ${LOGS_PATH:-/opt/zakpos}/logs/web
   
   # Nginx volumes
   nginx_prod_logs:
@@ -645,14 +647,14 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: ${LOGS_PATH:-/opt/pocket-pos}/logs/nginx
+      device: ${LOGS_PATH:-/opt/zakpos}/logs/nginx
   
   nginx_prod_cache:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: ${DATA_PATH:-/opt/pocket-pos}/cache/nginx
+      device: ${DATA_PATH:-/opt/zakpos}/cache/nginx
   
   # Monitoring volumes
   prometheus_prod_data:
@@ -660,14 +662,14 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: ${DATA_PATH:-/opt/pocket-pos}/data/prometheus
+      device: ${DATA_PATH:-/opt/zakpos}/data/prometheus
   
   grafana_prod_data:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: ${DATA_PATH:-/opt/pocket-pos}/data/grafana
+      device: ${DATA_PATH:-/opt/zakpos}/data/grafana
 
 # =============================================================================
 # PRODUCTION DEPLOYMENT COMMANDS
@@ -703,10 +705,10 @@ volumes:
 # Required environment variables for production:
 #
 # Database:
-# - POSTGRES_DB=pocket_pos
+# - POSTGRES_DB=zakpos
 # - POSTGRES_USER=postgres
 # - POSTGRES_PASSWORD=<strong-password>
-# - DATABASE_URL=postgresql://postgres:<password>@postgres:5432/pocket_pos
+# - DATABASE_URL=postgresql://postgres:<password>@postgres:5432/zakpos
 #
 # Redis:
 # - REDIS_PASSWORD=<strong-password>
@@ -734,9 +736,9 @@ volumes:
 # - NEXT_PUBLIC_WS_URL=wss://api.yourdomain.com
 #
 # Paths:
-# - DATA_PATH=/opt/pocket-pos
-# - LOGS_PATH=/opt/pocket-pos
-# - BACKUP_PATH=/opt/pocket-pos
+# - DATA_PATH=/opt/zakpos
+# - LOGS_PATH=/opt/zakpos
+# - BACKUP_PATH=/opt/zakpos
 #
 # Build:
 # - BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')

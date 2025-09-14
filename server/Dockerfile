@@ -7,7 +7,7 @@
 # =============================================================================
 # STAGE 1: Base Dependencies
 # =============================================================================
-FROM node:18-alpine AS base
+FROM node:22.19.0-alpine3.21 AS base
 
 # Set working directory
 WORKDIR /app
@@ -112,8 +112,8 @@ COPY . .
 # Generate Prisma client (if using Prisma)
 # RUN npx prisma generate
 
-# Create logs directory
-RUN mkdir -p /app/logs && chown nestjs:nodejs /app/logs
+# Create necessary directories with proper permissions
+RUN mkdir -p /app/logs /app/dist && chown -R nestjs:nodejs /app
 
 # Switch to non-root user
 USER nestjs
