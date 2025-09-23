@@ -1,0 +1,769 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================================
+// MULTI-TENANT ARCHITECTURE
+// =============================================================================
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  plan      String   @default("basic") // basic, pro, enterprise
+  status    String   @default("active") // active, suspended, cancelled
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Tenant relationships
+  userTenants     UserTenant[]
+  devices         Device[]
+  accounts        Account[]
+  taxes           Tax[]
+  customers       Customer[]
+  suppliers       Supplier[]
+  categories      Category[]
+  products        Product[]
+  shops           Shop[]
+  journals        Journal[]
+  customerLedger  CustomerLedger[]
+  supplierLedger  SupplierLedger[]
+  storeCredits    StoreCredit[]
+  giftCards       GiftCard[]
+  promotions      Promotion[]
+  events          Event[]
+  auditLogs       AuditLog[]
+  payments        Payment[]
+
+  @@map("tenants")
+}
+
+// =============================================================================
+// AUTHENTICATION & AUTHORIZATION
+// =============================================================================
+
+model User {
+  id         String   @id @default(cuid())
+  externalId String?  @unique // For OAuth providers
+  name       String
+  phone      String?
+  email      String   @unique
+  locale     String   @default("en")
+  status     String   @default("active") // active, inactive, suspended
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // User relationships
+  userTenants UserTenant[]
+  devices     Device[]
+  sessions    Session[]
+  sales       Sale[] @relation("CashierSales")
+  returns     Return[] @relation("HandlerReturns")
+  cashSessions CashSession[] @relation("OpenedBy")
+  cashSessionsClosed CashSession[] @relation("ClosedBy")
+  auditLogs   AuditLog[]
+
+  @@map("users")
+}
+
+model UserTenant {
+  id          String   @id @default(cuid())
+  userId      String
+  tenantId    String
+  role        String   // owner, manager, cashier
+  permissions Json     // Fine-grained permissions
+  createdAt   DateTime @default(now())
+
+  // Relationships
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tenantId])
+  @@map("user_tenants")
+}
+
+model Device {
+  id           String    @id @default(cuid())
+  tenantId     String
+  userId       String
+  platform     String    // android, ios, web
+  model        String?
+  deviceId     String    @unique // Device fingerprint
+  registeredAt DateTime  @default(now())
+  revokedAt    DateTime?
+
+  // Relationships
+  tenant Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessions Session[]
+
+  @@map("devices")
+}
+
+model Session {
+  id               String    @id @default(cuid())
+  deviceId         String
+  userId           String
+  tokenFingerprint String    @unique
+  issuedAt         DateTime  @default(now())
+  expiresAt        DateTime
+  isActive         Boolean   @default(true)
+
+  // Relationships
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+// =============================================================================
+// ACCOUNTING SYSTEM
+// =============================================================================
+
+model Account {
+  id        String   @id @default(cuid())
+  tenantId  String
+  code      String
+  name      String
+  type      String   // asset, liability, equity, revenue, expense
+  parentId  String?
+  currency  String   @default("BDT")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  tenant     Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parent     Account?      @relation("AccountHierarchy", fields: [parentId], references: [id])
+  children   Account[]     @relation("AccountHierarchy")
+  journalLines JournalLine[]
+  taxCollected Tax[] @relation("TaxCollected")
+  taxInput   Tax[] @relation("TaxInput")
+
+  @@unique([tenantId, code])
+  @@map("accounts")
+}
+
+model Tax {
+  id                  String   @id @default(cuid())
+  tenantId           String
+  name               String
+  ratePercent        Decimal  @db.Decimal(5, 2)
+  inclusive          Boolean  @default(false)
+  accountCollectedId String?
+  accountInputId     String?
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  // Relationships
+  tenant           Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  accountCollected Account?   @relation("TaxCollected", fields: [accountCollectedId], references: [id])
+  accountInput     Account?   @relation("TaxInput", fields: [accountInputId], references: [id])
+  products         Product[]
+  purchaseLines    PurchaseLine[]
+  saleLines        SaleLine[]
+
+  @@map("taxes")
+}
+
+model Currency {
+  code         String   @id
+  symbol       String
+  decimalPlaces Int     @default(2)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  // Relationships
+  exchangeRates ExchangeRate[] @relation("BaseCurrency")
+  exchangeRatesQuote ExchangeRate[] @relation("QuoteCurrency")
+
+  @@map("currencies")
+}
+
+model ExchangeRate {
+  id         String   @id @default(cuid())
+  baseCode   String
+  quoteCode  String
+  rate       Decimal  @db.Decimal(15, 6)
+  validFrom  DateTime @default(now())
+
+  // Relationships
+  base  Currency @relation("BaseCurrency", fields: [baseCode], references: [code])
+  quote Currency @relation("QuoteCurrency", fields: [quoteCode], references: [code])
+
+  @@unique([baseCode, quoteCode, validFrom])
+  @@map("exchange_rates")
+}
+
+model Journal {
+  id           String   @id @default(cuid())
+  tenantId     String
+  date         DateTime
+  description  String
+  source       String   // sale, purchase, adjustment, etc.
+  referenceType String? // sale, purchase, etc.
+  referenceId  String?
+  createdBy    String
+  status       String   @default("draft") // draft, posted, reversed
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relationships
+  tenant      Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  journalLines JournalLine[]
+
+  @@map("journals")
+}
+
+model JournalLine {
+  id        String   @id @default(cuid())
+  journalId String
+  accountId String
+  debit     Decimal  @default(0) @db.Decimal(15, 2)
+  credit    Decimal  @default(0) @db.Decimal(15, 2)
+  currency  String   @default("BDT")
+  fxRate    Decimal  @default(1) @db.Decimal(15, 6)
+  memo      String?
+
+  // Relationships
+  journal Journal @relation(fields: [journalId], references: [id], onDelete: Cascade)
+  account Account @relation(fields: [accountId], references: [id])
+
+  @@map("journal_lines")
+}
+
+// =============================================================================
+// PARTIES AND LEDGERS
+// =============================================================================
+
+model Customer {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  phone       String?
+  email       String?
+  taxId       String?
+  creditLimit Decimal  @default(0) @db.Decimal(15, 2)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relationships
+  tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customerLedger CustomerLedger[]
+  sales        Sale[]
+  storeCredits StoreCredit[]
+  payments     Payment[]
+
+  @@map("customers")
+}
+
+model Supplier {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  phone     String?
+  email     String?
+  taxId     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  tenant         Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  supplierLedger SupplierLedger[]
+  purchases      Purchase[]
+  payments       Payment[]
+
+  @@map("suppliers")
+}
+
+model CustomerLedger {
+  id          String   @id @default(cuid())
+  tenantId    String
+  customerId  String
+  date        DateTime
+  type        String   // sale, payment, return, adjustment
+  referenceId String?
+  debit       Decimal  @default(0) @db.Decimal(15, 2)
+  credit      Decimal  @default(0) @db.Decimal(15, 2)
+  balanceAfter Decimal @db.Decimal(15, 2)
+  createdAt   DateTime @default(now())
+
+  // Relationships
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@map("customer_ledger")
+}
+
+model SupplierLedger {
+  id          String   @id @default(cuid())
+  tenantId    String
+  supplierId  String
+  date        DateTime
+  type        String   // purchase, payment, return, adjustment
+  referenceId String?
+  debit       Decimal  @default(0) @db.Decimal(15, 2)
+  credit      Decimal  @default(0) @db.Decimal(15, 2)
+  balanceAfter Decimal @db.Decimal(15, 2)
+  createdAt   DateTime @default(now())
+
+  // Relationships
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@map("supplier_ledger")
+}
+
+// =============================================================================
+// CATALOG & INVENTORY
+// =============================================================================
+
+model Category {
+  id        String   @id @default(cuid())
+  tenantId  String
+  parentId  String?
+  name      String
+  path      String   // Materialized path for hierarchy
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  tenant   Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parent   Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children Category[] @relation("CategoryHierarchy")
+  products Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id              String   @id @default(cuid())
+  tenantId        String
+  name            String
+  sku             String
+  unit            String   @default("pcs")
+  basePrice       Decimal  @db.Decimal(15, 2)
+  defaultCost     Decimal  @default(0) @db.Decimal(15, 2)
+  taxId           String?
+  isWeighted      Boolean  @default(false)
+  variantGroupId  String?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relationships
+  tenant      Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  categoryId  String?
+  category    Category?      @relation(fields: [categoryId], references: [id])
+  tax         Tax?           @relation(fields: [taxId], references: [id])
+  variants    ProductVariant[]
+  barcodes    Barcode[]
+  inventory   Inventory[]
+  batches     Batch[]
+  purchaseLines PurchaseLine[]
+  saleLines   SaleLine[]
+
+  @@unique([tenantId, sku])
+  @@map("products")
+}
+
+model ProductVariant {
+  id            String   @id @default(cuid())
+  productId     String
+  attributes    Json     // { color: "red", size: "M" }
+  barcode       String?
+  priceOverride Decimal? @db.Decimal(15, 2)
+  costOverride  Decimal? @db.Decimal(15, 2)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relationships
+  product   Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  barcodes  Barcode[]
+  inventory Inventory[]
+  purchaseLines PurchaseLine[]
+  saleLines SaleLine[]
+
+  @@map("product_variants")
+}
+
+model Barcode {
+  id         String   @id @default(cuid())
+  productId  String
+  variantId  String?
+  type       String   // ean13, upc, code128, qr
+  value      String
+  isPrimary  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  // Relationships
+  product  Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant  ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, value])
+  @@map("barcodes")
+}
+
+model Shop {
+  id            String   @id @default(cuid())
+  tenantId      String
+  name          String
+  address       String?
+  timeZone      String   @default("Asia/Dhaka")
+  taxProfileId  String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relationships
+  tenant     Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  inventory  Inventory[]
+  purchases  Purchase[]
+  sales      Sale[]
+  cashSessions CashSession[]
+
+  @@map("shops")
+}
+
+model Inventory {
+  id              String   @id @default(cuid())
+  shopId          String
+  productId       String
+  variantId       String?
+  quantityOnHand  Decimal  @default(0) @db.Decimal(15, 3)
+  valuationMethod String   @default("WAVC") // WAVC, FIFO
+  avgCost         Decimal  @default(0) @db.Decimal(15, 2)
+  fifoLayers      Json?    // FIFO layers for FIFO valuation
+  updatedAt       DateTime @updatedAt
+
+  // Relationships
+  shop    Shop         @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  product Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([shopId, productId, variantId])
+  @@map("inventory")
+}
+
+model Batch {
+  id          String    @id @default(cuid())
+  productId   String
+  lotNo       String
+  expiryDate  DateTime?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relationships
+  product       Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  purchaseLines PurchaseLine[]
+  saleLines     SaleLine[]
+
+  @@unique([productId, lotNo])
+  @@map("batches")
+}
+
+// =============================================================================
+// PURCHASING
+// =============================================================================
+
+model Purchase {
+  id          String   @id @default(cuid())
+  shopId      String
+  supplierId  String
+  status      String   @default("draft") // draft, received, invoiced, paid, cancelled
+  terms       String?
+  dueDate     DateTime?
+  currency    String   @default("BDT")
+  fxRate      Decimal  @default(1) @db.Decimal(15, 6)
+  subtotal    Decimal  @default(0) @db.Decimal(15, 2)
+  discount    Decimal  @default(0) @db.Decimal(15, 2)
+  tax         Decimal  @default(0) @db.Decimal(15, 2)
+  total       Decimal  @default(0) @db.Decimal(15, 2)
+  notes       String?
+  createdAt   DateTime @default(now())
+  postedAt    DateTime?
+  updatedAt   DateTime @updatedAt
+
+  // Relationships
+  shop           Shop            @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  supplier       Supplier        @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  purchaseLines  PurchaseLine[]
+  purchaseReturns PurchaseReturn[]
+
+  @@map("purchases")
+}
+
+model PurchaseLine {
+  id          String   @id @default(cuid())
+  purchaseId  String
+  productId   String
+  variantId   String?
+  batchId     String?
+  qty         Decimal  @db.Decimal(15, 3)
+  unitCost    Decimal  @db.Decimal(15, 2)
+  discount    Decimal  @default(0) @db.Decimal(15, 2)
+  taxId       String?
+  taxAmount   Decimal  @default(0) @db.Decimal(15, 2)
+  lineTotal   Decimal  @db.Decimal(15, 2)
+
+  // Relationships
+  purchase Purchase       @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  product  Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant  ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  batch    Batch?         @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  tax      Tax?           @relation(fields: [taxId], references: [id])
+
+  @@map("purchase_lines")
+}
+
+model PurchaseReturn {
+  id          String   @id @default(cuid())
+  purchaseId  String
+  status      String   @default("draft") // draft, approved, posted
+  subtotal    Decimal  @default(0) @db.Decimal(15, 2)
+  tax         Decimal  @default(0) @db.Decimal(15, 2)
+  total       Decimal  @default(0) @db.Decimal(15, 2)
+  notes       String?
+  createdAt   DateTime @default(now())
+  postedAt    DateTime?
+
+  // Relationships
+  purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+
+  @@map("purchase_returns")
+}
+
+// =============================================================================
+// SALES & PAYMENTS
+// =============================================================================
+
+model Sale {
+  id            String   @id @default(cuid())
+  shopId        String
+  customerId    String?
+  cashierId     String
+  status        String   @default("draft") // draft, completed, cancelled, refunded
+  channel       String   @default("pos") // pos, online, phone
+  subtotal      Decimal  @default(0) @db.Decimal(15, 2)
+  discount      Decimal  @default(0) @db.Decimal(15, 2)
+  tax           Decimal  @default(0) @db.Decimal(15, 2)
+  total         Decimal  @default(0) @db.Decimal(15, 2)
+  paymentStatus String   @default("pending") // pending, paid, partial, refunded
+  currency      String   @default("BDT")
+  fxRate        Decimal  @default(1) @db.Decimal(15, 6)
+  createdAt     DateTime @default(now())
+  postedAt      DateTime?
+  updatedAt     DateTime @updatedAt
+
+  // Relationships
+  shop      Shop        @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  customer  Customer?   @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  cashier   User        @relation("CashierSales", fields: [cashierId], references: [id], onDelete: Cascade)
+  saleLines SaleLine[]
+  payments  Payment[]
+  returns   Return[]
+
+  @@map("sales")
+}
+
+model SaleLine {
+  id        String   @id @default(cuid())
+  saleId    String
+  productId String
+  variantId String?
+  batchId   String?
+  qty       Decimal  @db.Decimal(15, 3)
+  unitPrice Decimal  @db.Decimal(15, 2)
+  discount  Decimal  @default(0) @db.Decimal(15, 2)
+  taxId     String?
+  taxAmount Decimal  @default(0) @db.Decimal(15, 2)
+  lineTotal Decimal  @db.Decimal(15, 2)
+
+  // Relationships
+  sale    Sale           @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  batch   Batch?         @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  tax     Tax?           @relation(fields: [taxId], references: [id])
+
+  @@map("sale_lines")
+}
+
+model Payment {
+  id         String   @id @default(cuid())
+  tenantId   String
+  saleId     String?
+  supplierId String?
+  customerId String?
+  direction  String   // in, out
+  method     String   // cash, card, bKash, nagad, bank_transfer
+  amount     Decimal  @db.Decimal(15, 2)
+  currency   String   @default("BDT")
+  fxRate     Decimal  @default(1) @db.Decimal(15, 6)
+  reference  String?
+  receivedAt DateTime @default(now())
+  postedAt   DateTime?
+
+  // Relationships
+  tenant   Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sale     Sale?      @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  supplier Supplier?  @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  customer Customer?  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@map("payments")
+}
+
+model Return {
+  id            String   @id @default(cuid())
+  saleId        String
+  status        String   @default("draft") // draft, approved, posted
+  subtotal      Decimal  @default(0) @db.Decimal(15, 2)
+  tax           Decimal  @default(0) @db.Decimal(15, 2)
+  total         Decimal  @default(0) @db.Decimal(15, 2)
+  refundMethod  String?
+  handlerId     String
+  createdAt     DateTime @default(now())
+  postedAt      DateTime?
+
+  // Relationships
+  sale    Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  handler User @relation("HandlerReturns", fields: [handlerId], references: [id], onDelete: Cascade)
+
+  @@map("returns")
+}
+
+// =============================================================================
+// CASH MANAGEMENT
+// =============================================================================
+
+model CashSession {
+  id            String    @id @default(cuid())
+  shopId        String
+  openedBy      String
+  openingFloat  Decimal   @default(0) @db.Decimal(15, 2)
+  openedAt      DateTime  @default(now())
+  closedBy      String?
+  closingTotal  Decimal?
+  closedAt      DateTime?
+  notes         String?
+
+  // Relationships
+  shop      Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  opener    User          @relation("OpenedBy", fields: [openedBy], references: [id], onDelete: Cascade)
+  closer    User?         @relation("ClosedBy", fields: [closedBy], references: [id], onDelete: SetNull)
+  movements CashMovement[]
+
+  @@map("cash_sessions")
+}
+
+model CashMovement {
+  id            String   @id @default(cuid())
+  cashSessionId String
+  type          String   // sale, refund, float, withdrawal, deposit
+  amount        Decimal  @db.Decimal(15, 2)
+  method        String   // cash, card, bKash, etc.
+  reference     String?
+  createdAt     DateTime @default(now())
+
+  // Relationships
+  cashSession CashSession @relation(fields: [cashSessionId], references: [id], onDelete: Cascade)
+
+  @@map("cash_movements")
+}
+
+// =============================================================================
+// STORE CREDIT & GIFT CARDS
+// =============================================================================
+
+model StoreCredit {
+  id        String   @id @default(cuid())
+  tenantId  String
+  customerId String
+  balance   Decimal  @db.Decimal(15, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, customerId])
+  @@map("store_credits")
+}
+
+model GiftCard {
+  id        String    @id @default(cuid())
+  tenantId  String
+  code      String    @unique
+  balance   Decimal   @db.Decimal(15, 2)
+  issuedAt  DateTime  @default(now())
+  expiresAt DateTime?
+  status    String    @default("active") // active, used, expired, cancelled
+
+  // Relationships
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("gift_cards")
+}
+
+model Promotion {
+  id         String   @id @default(cuid())
+  tenantId   String
+  rules      Json     // Promotion rules configuration
+  startAt    DateTime
+  endAt      DateTime
+  status     String   @default("active") // active, inactive, expired
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relationships
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("promotions")
+}
+
+// =============================================================================
+// EVENTS & AUDIT
+// =============================================================================
+
+model Event {
+  id           String   @id @default(cuid())
+  tenantId     String
+  aggregate    String   // sale, purchase, inventory, etc.
+  aggregateId  String
+  type         String   // created, updated, deleted, etc.
+  payload      Json
+  occurredAt   DateTime @default(now())
+  outboxStatus String   @default("pending") // pending, processed, failed
+
+  // Relationships
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("events")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  tenantId   String
+  userId     String
+  action     String   // create, update, delete, login, logout
+  entity     String   // user, product, sale, etc.
+  entityId   String
+  timestamp  DateTime @default(now())
+  metadata   Json?
+
+  // Relationships
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("audit_logs")
+}

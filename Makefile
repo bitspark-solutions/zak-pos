@@ -248,6 +248,74 @@ test-web: ## Test Web endpoints
 	@echo "$(GREEN)✓ Web tests completed$(NC)"
 
 # =============================================================================
+# COMPREHENSIVE TESTING TARGETS
+# =============================================================================
+
+.PHONY: test-unit
+test-unit: ## Run unit tests only
+	@echo "$(BLUE)Running unit tests...$(NC)"
+	@cd server && npm run test:unit
+	@echo "$(GREEN)✓ Unit tests completed$(NC)"
+
+.PHONY: test-e2e
+test-e2e: ## Run end-to-end tests
+	@echo "$(BLUE)Running end-to-end tests...$(NC)"
+	@cd server && npm run test:e2e
+	@echo "$(GREEN)✓ End-to-end tests completed$(NC)"
+
+.PHONY: test-performance
+test-performance: ## Run performance tests
+	@echo "$(BLUE)Running performance tests...$(NC)"
+	@cd server && npm run test:performance
+	@echo "$(GREEN)✓ Performance tests completed$(NC)"
+
+.PHONY: test-coverage
+test-coverage: ## Run tests with coverage report
+	@echo "$(BLUE)Running tests with coverage...$(NC)"
+	@cd server && npm run test:cov
+	@echo "$(GREEN)✓ Coverage report generated$(NC)"
+
+.PHONY: test-watch
+test-watch: ## Run tests in watch mode
+	@echo "$(BLUE)Running tests in watch mode...$(NC)"
+	@cd server && npm run test:watch
+
+.PHONY: test-debug
+test-debug: ## Run tests in debug mode
+	@echo "$(BLUE)Running tests in debug mode...$(NC)"
+	@cd server && npm run test:debug
+
+.PHONY: test-ci
+test-ci: ## Run tests for CI/CD pipeline
+	@echo "$(BLUE)Running CI/CD tests...$(NC)"
+	@cd server && npm run test:ci
+	@echo "$(GREEN)✓ CI/CD tests completed$(NC)"
+
+.PHONY: test-all
+test-all: ## Run all test suites (unit, e2e, performance)
+	@echo "$(BLUE)Running comprehensive test suite...$(NC)"
+	@cd server && npm run test:all
+	@echo "$(GREEN)✓ All test suites completed$(NC)"
+
+.PHONY: test-auth
+test-auth: ## Run authentication-specific tests
+	@echo "$(BLUE)Running authentication tests...$(NC)"
+	@cd server && npm test -- --testPathPatterns="auth"
+	@echo "$(GREEN)✓ Authentication tests completed$(NC)"
+
+.PHONY: test-users
+test-users: ## Run user management tests
+	@echo "$(BLUE)Running user management tests...$(NC)"
+	@cd server && npm test -- --testPathPatterns="users"
+	@echo "$(GREEN)✓ User management tests completed$(NC)"
+
+.PHONY: test-quick
+test-quick: ## Run quick tests (unit tests only)
+	@echo "$(BLUE)Running quick tests...$(NC)"
+	@cd server && npm test -- --testPathPatterns="src/.*\.spec\.ts$"
+	@echo "$(GREEN)✓ Quick tests completed$(NC)"
+
+# =============================================================================
 # DATABASE TARGETS
 # =============================================================================
 
