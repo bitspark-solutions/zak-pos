@@ -18,5 +18,9 @@ export class RegisterDto {
   @IsOptional()
   @IsString()
   tenantId?: string;
+
+  @IsOptional()
+  @IsString()
+  role?: string;
 }
 

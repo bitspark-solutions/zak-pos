@@ -346,14 +346,17 @@ CREATE POLICY tenant_isolation ON sales
 
 ## API Design
 
-### Authentication Endpoints
+### Authentication Endpoints (Auth0 API Integration)
 ```
-POST /auth/otp/request
-POST /auth/otp/verify
-POST /auth/token/refresh
-POST /devices/register
-POST /sessions/revoke
-GET  /me
+POST /auth/login          # Validate credentials with Auth0 + Database
+POST /auth/register       # Create user in Auth0 + Database
+POST /auth/refresh        # Refresh JWT token
+POST /auth/logout         # Invalidate session
+GET  /auth/profile        # Get user profile with full context
+POST /auth/validate       # Validate existing token
+POST /devices/register    # Register device for user
+POST /sessions/revoke     # Revoke user session
+GET  /me                  # Get current user context
 ```
 
 ### Product Catalog Endpoints
@@ -426,12 +429,14 @@ GET  /reports/financial-summary
 
 ## Security Measures
 
-### Authentication & Authorization
-- **OAuth 2.1/PKCE**: Latest OAuth standard with PKCE for security
-- **JWT Tokens**: Short-lived access tokens with refresh rotation
+### Authentication & Authorization (Auth0 API Integration)
+- **Auth0 Management API**: Backend validates users through Auth0's secure API
+- **Dual Validation**: User must exist in both Auth0 and local database
+- **JWT Tokens**: Backend-generated tokens with full user context
 - **RBAC**: Role-based access control with fine-grained permissions
 - **Device Binding**: Device registration with remote revocation
 - **Rate Limiting**: API rate limiting per user/device
+- **Session Management**: Backend-controlled session lifecycle
 
 ### Data Protection
 - **Encryption**: TLS 1.3 for transit, AES-256 for rest

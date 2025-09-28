@@ -1,5 +1,5 @@
 # =============================================================================
-# ZAKPOS - Makefile
+# ZAKPOS - Makefile (Windows Compatible)
 # =============================================================================
 # Comprehensive Makefile for ZakPOS development, testing, and deployment
 # Provides easy commands for all common operations
@@ -10,9 +10,9 @@
 
 # Project information
 PROJECT_NAME := zakpos
-VERSION := $(shell git describe --tags --always 2>/dev/null || echo "dev")
-BUILD_DATE := $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
-VCS_REF := $(shell git rev-parse --short HEAD 2>/dev/null || echo "dev")
+VERSION := $(shell git describe --tags --always 2>nul || echo "dev")
+BUILD_DATE := $(shell powershell -Command "Get-Date -Format 'yyyy-MM-ddTHH:mm:ssZ'")
+VCS_REF := $(shell git rev-parse --short HEAD 2>nul || echo "dev")
 
 # Docker Compose files
 COMPOSE_BASE := docker-compose.yml
@@ -28,16 +28,6 @@ DATA_DIR := ./data
 LOGS_DIR := ./logs
 BACKUP_DIR := ./backups
 
-# Colors for output
-RED := \033[0;31m
-GREEN := \033[0;32m
-YELLOW := \033[0;33m
-BLUE := \033[0;34m
-PURPLE := \033[0;35m
-CYAN := \033[0;36m
-WHITE := \033[0;37m
-NC := \033[0m # No Color
-
 # =============================================================================
 # DEFAULT TARGET
 # =============================================================================
@@ -50,20 +40,32 @@ NC := \033[0m # No Color
 
 .PHONY: help
 help: ## Show this help message
-	@echo "$(CYAN)ZakPOS - Makefile Commands$(NC)"
-	@echo "$(CYAN)================================$(NC)"
+	@echo "ZakPOS - Makefile Commands"
+	@echo "================================"
 	@echo ""
-	@echo "$(YELLOW)Project Information:$(NC)"
+	@echo "Project Information:"
 	@echo "  Project: $(PROJECT_NAME)"
 	@echo "  Version: $(VERSION)"
 	@echo "  Build Date: $(BUILD_DATE)"
 	@echo "  VCS Ref: $(VCS_REF)"
 	@echo ""
-	@echo "$(YELLOW)Available Commands:$(NC)"
+	@echo "Available Commands:"
 	@echo ""
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-20s$(NC) %s\n", $$1, $$2}'
+	@echo "  dev                 Start development environment"
+	@echo "  dev-build           Build and start development environment"
+	@echo "  dev-stop            Stop development environment"
+	@echo "  dev-logs            Show development environment logs"
+	@echo "  test                Run all tests"
+	@echo "  test-unit           Run unit tests only"
+	@echo "  test-e2e            Run end-to-end tests"
+	@echo "  test-auth           Run authentication-specific tests"
+	@echo "  build               Build all services"
+	@echo "  clean               Clean up containers, networks, and volumes"
+	@echo "  status              Show service status"
+	@echo "  logs                Show logs for all services"
+	@echo "  help                Show this help message"
 	@echo ""
-	@echo "$(YELLOW)Examples:$(NC)"
+	@echo "Examples:"
 	@echo "  make dev          # Start development environment"
 	@echo "  make test         # Run all tests"
 	@echo "  make build        # Build all services"
@@ -76,36 +78,42 @@ help: ## Show this help message
 
 .PHONY: setup
 setup: ## Initial project setup
-	@echo "$(BLUE)Setting up ZakPOS project...$(NC)"
-	@if [ ! -f $(ENV_FILE) ]; then \
-		echo "$(YELLOW)Creating .env file from template...$(NC)"; \
-		cp $(ENV_EXAMPLE) $(ENV_FILE); \
-		echo "$(GREEN)✓ .env file created$(NC)"; \
-	else \
-		echo "$(GREEN)✓ .env file already exists$(NC)"; \
-	fi
-	@echo "$(YELLOW)Creating necessary directories...$(NC)"
-	@mkdir -p $(DATA_DIR)/{postgres,redis,kafka,zookeeper,uploads}
-	@mkdir -p $(LOGS_DIR)/{api,web,nginx}
-	@mkdir -p $(BACKUP_DIR)
-	@echo "$(GREEN)✓ Directories created$(NC)"
-	@echo "$(GREEN)✓ Setup complete!$(NC)"
+	@echo "Setting up ZakPOS project..."
+	@if not exist $(ENV_FILE) ( \
+		echo "Creating .env file from template..." && \
+		copy $(ENV_EXAMPLE) $(ENV_FILE) && \
+		echo "✓ .env file created" \
+	) else ( \
+		echo "✓ .env file already exists" \
+	)
+	@echo "Creating necessary directories..."
+	@if not exist $(DATA_DIR)\postgres mkdir $(DATA_DIR)\postgres
+	@if not exist $(DATA_DIR)\redis mkdir $(DATA_DIR)\redis
+	@if not exist $(DATA_DIR)\kafka mkdir $(DATA_DIR)\kafka
+	@if not exist $(DATA_DIR)\zookeeper mkdir $(DATA_DIR)\zookeeper
+	@if not exist $(DATA_DIR)\uploads mkdir $(DATA_DIR)\uploads
+	@if not exist $(LOGS_DIR)\api mkdir $(LOGS_DIR)\api
+	@if not exist $(LOGS_DIR)\web mkdir $(LOGS_DIR)\web
+	@if not exist $(LOGS_DIR)\nginx mkdir $(LOGS_DIR)\nginx
+	@if not exist $(BACKUP_DIR) mkdir $(BACKUP_DIR)
+	@echo "✓ Directories created"
+	@echo "✓ Setup complete!"
 	@echo ""
-	@echo "$(YELLOW)Next steps:$(NC)"
+	@echo "Next steps:"
 	@echo "  1. Edit .env file with your configuration"
 	@echo "  2. Run 'make dev' to start development environment"
 	@echo "  3. Run 'make help' to see all available commands"
 
 .PHONY: setup-env
 setup-env: ## Create .env file from template
-	@if [ ! -f $(ENV_FILE) ]; then \
-		echo "$(YELLOW)Creating .env file from template...$(NC)"; \
-		cp $(ENV_EXAMPLE) $(ENV_FILE); \
-		echo "$(GREEN)✓ .env file created$(NC)"; \
-		echo "$(YELLOW)Please edit .env file with your configuration$(NC)"; \
-	else \
-		echo "$(YELLOW).env file already exists$(NC)"; \
-	fi
+	@if not exist $(ENV_FILE) ( \
+		echo "Creating .env file from template..." && \
+		copy $(ENV_EXAMPLE) $(ENV_FILE) && \
+		echo "✓ .env file created" && \
+		echo "Please edit .env file with your configuration" \
+	) else ( \
+		echo ".env file already exists" \
+	)
 
 # =============================================================================
 # DEVELOPMENT TARGETS
@@ -113,16 +121,16 @@ setup-env: ## Create .env file from template
 
 .PHONY: dev
 dev: ## Start development environment
-	@echo "$(BLUE)Starting ZakPOS development environment...$(NC)"
+	@echo "Starting ZakPOS development environment..."
 	@docker-compose -f $(COMPOSE_BASE) -f $(COMPOSE_DEV) up -d
-	@echo "$(GREEN)✓ Development environment started$(NC)"
+	@echo "✓ Development environment started"
 	@echo ""
-	@echo "$(YELLOW)Application URLs:$(NC)"
+	@echo "Application URLs:"
 	@echo "  API: http://localhost:39847"
 	@echo "  Web: http://localhost:41923"
 	@echo "  Mobile: http://localhost:53851"
 	@echo ""
-	@echo "$(YELLOW)Development Tools:$(NC)"
+	@echo "Development Tools:"
 	@echo "  pgAdmin: http://localhost:58050 (admin@zakpos.com / admin123)"
 	@echo "  Redis Insight: http://localhost:58001"
 	@echo "  Kafka UI: http://localhost:58080"
@@ -131,9 +139,9 @@ dev: ## Start development environment
 
 .PHONY: dev-build
 dev-build: ## Build and start development environment
-	@echo "$(BLUE)Building and starting development environment...$(NC)"
+	@echo "Building and starting development environment..."
 	@docker-compose -f $(COMPOSE_BASE) -f $(COMPOSE_DEV) up -d --build
-	@echo "$(GREEN)✓ Development environment built and started$(NC)"
+	@echo "✓ Development environment built and started"
 
 .PHONY: dev-logs
 dev-logs: ## Show development environment logs
@@ -141,9 +149,9 @@ dev-logs: ## Show development environment logs
 
 .PHONY: dev-stop
 dev-stop: ## Stop development environment
-	@echo "$(BLUE)Stopping development environment...$(NC)"
+	@echo "Stopping development environment..."
 	@docker-compose -f $(COMPOSE_BASE) -f $(COMPOSE_DEV) down
-	@echo "$(GREEN)✓ Development environment stopped$(NC)"
+	@echo "✓ Development environment stopped"
 
 .PHONY: dev-restart
 dev-restart: dev-stop dev ## Restart development environment

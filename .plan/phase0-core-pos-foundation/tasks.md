@@ -75,43 +75,62 @@ Design and implement the database schema with multi-tenant architecture using Po
 
 ---
 
-## TASK-003: Authentication & Authorization System
-**Priority**: High | **Effort**: 4 days | **Dependencies**: TASK-002
+## TASK-003: Authentication & Authorization System (Auth0 Migration)
+**Priority**: High | **Effort**: 2 days | **Dependencies**: TASK-002
 
 ### Description
-Implement OAuth 2.1/PKCE authentication with JWT tokens and role-based access control.
+Migrate from custom authentication to Auth0 for professional-grade security, compliance, and scalability. Maintain existing API structure while leveraging Auth0's advanced features.
 
 ### Sub-tasks
-- [ ] TASK-003-1: OAuth 2.1/PKCE implementation
-  - [ ] Set up Passport.js strategies
-  - [ ] Implement OAuth 2.1/PKCE flow
-  - [ ] Create JWT token generation and validation
-  - [ ] Implement refresh token rotation
-  - [ ] Add token blacklisting for logout
+- [x] TASK-003-1: Custom Auth Implementation (COMPLETED - Baseline)
+  - [x] Set up Passport.js strategies
+  - [x] Implement JWT token generation and validation
+  - [x] Create user registration and login endpoints
+  - [x] Implement password hashing with bcrypt
+  - [x] Add basic session management
 
-- [ ] TASK-003-2: User management
-  - [ ] Create user registration endpoint
-  - [ ] Implement user profile management
-  - [ ] Add user status management (active/inactive)
-  - [ ] Create user search and filtering
+- [x] TASK-003-2: User Management (COMPLETED - Baseline)
+  - [x] Create user registration endpoint
+  - [x] Implement user profile management
+  - [x] Add user CRUD operations
+  - [x] Implement database persistence
 
-- [ ] TASK-003-3: Role-based access control
-  - [ ] Define role hierarchy (Owner, Manager, Cashier)
-  - [ ] Create permission system
-  - [ ] Implement RBAC guards and decorators
-  - [ ] Add permission checking middleware
+- [x] TASK-003-3: Role-based Access Control (COMPLETED - Baseline)
+  - [x] Define role hierarchy (Owner, Manager, Cashier)
+  - [x] Create permission system with granular permissions
+  - [x] Implement RBAC guards and decorators
+  - [x] Add permission checking middleware
 
-- [ ] TASK-003-4: Device management
-  - [ ] Implement device registration
-  - [ ] Add device binding to users
+- [ ] TASK-003-4: Auth0 Migration
+  - [ ] Set up Auth0 tenant and configure application
+  - [ ] Install Auth0 SDK for NestJS
+  - [ ] Migrate user data to Auth0
+  - [ ] Update authentication endpoints to use Auth0
+  - [ ] Implement Auth0 JWT validation
+  - [ ] Configure Auth0 roles and permissions
+  - [ ] Test Auth0 integration with existing API
+
+- [ ] TASK-003-5: Auth0 Advanced Features
+  - [ ] Configure multi-factor authentication (MFA)
+  - [ ] Set up social login providers (Google, Facebook)
+  - [ ] Implement passwordless authentication
+  - [ ] Configure risk-based authentication
+  - [ ] Set up Auth0 Actions for custom business logic
+  - [ ] Configure Auth0 Rules for tenant isolation
+
+- [ ] TASK-003-6: Device Management (Auth0 Enhanced)
+  - [ ] Implement device registration with Auth0
+  - [ ] Add device binding to Auth0 users
   - [ ] Create device revocation system
-  - [ ] Add device fingerprinting
+  - [ ] Add device fingerprinting and tracking
+  - [ ] Configure device-based access policies
 
-- [ ] TASK-003-5: Session management
-  - [ ] Implement session creation and validation
+- [ ] TASK-003-7: Session Management (Auth0 Enhanced)
+  - [ ] Implement Auth0 session management
   - [ ] Add session timeout handling
   - [ ] Create session cleanup jobs
   - [ ] Add concurrent session limits
+  - [ ] Configure session policies per role
 
 ---
 
