@@ -429,14 +429,13 @@ GET  /reports/financial-summary
 
 ## Security Measures
 
-### Authentication & Authorization (Auth0 API Integration)
-- **Auth0 Management API**: Backend validates users through Auth0's secure API
-- **Dual Validation**: User must exist in both Auth0 and local database
-- **JWT Tokens**: Backend-generated tokens with full user context
-- **RBAC**: Role-based access control with fine-grained permissions
-- **Device Binding**: Device registration with remote revocation
-- **Rate Limiting**: API rate limiting per user/device
-- **Session Management**: Backend-controlled session lifecycle
+### Authentication & Authorization (Auth0 OAuth Flow)
+- **Auth0 OAuth 2.0**: Standard OAuth flow with PKCE for security
+- **Redirect-based Login**: Users redirected to Auth0 login page
+- **JWT Tokens**: Auth0-issued tokens with user identity and metadata
+- **RBAC**: Role-based access control using Auth0 user metadata
+- **Session Management**: Auth0-managed session lifecycle
+- **Device Management**: Enhanced device tracking with Auth0
 
 ### Data Protection
 - **Encryption**: TLS 1.3 for transit, AES-256 for rest

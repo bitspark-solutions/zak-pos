@@ -2,7 +2,6 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { UsersService } from '../users/users.service';
-import { Auth0Service } from './auth0.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 
@@ -11,32 +10,20 @@ export class AuthService {
   constructor(
     private usersService: UsersService,
     private jwtService: JwtService,
-    private auth0Service: Auth0Service,
   ) {}
 
   async validateUser(email: string, password: string): Promise<any> {
-    // Step 1: Validate with Auth0
-    const auth0User = await this.auth0Service.validateUser(email, password);
-    if (!auth0User) {
-      return null;
+    // For Auth0 OAuth flow, validation happens in the callback
+    // This method is used for direct login attempts
+    const user = await this.usersService.findByEmail(email);
+    if (user && await bcrypt.compare(password, user.password)) {
+      const { password, ...result } = user;
+      return {
+        ...result,
+        permissions: this.getUserPermissions(user.role)
+      };
     }
-
-    // Step 2: Check if user exists in local database
-    const localUser = await this.usersService.findByEmail(email);
-    if (!localUser) {
-      throw new UnauthorizedException('User not found in local database');
-    }
-
-    // Step 3: Return combined user data
-    return {
-      id: localUser.id,
-      email: localUser.email,
-      name: localUser.name,
-      role: localUser.role,
-      tenantId: localUser.tenantId,
-      auth0Id: auth0User.auth0Id,
-      permissions: this.getUserPermissions(localUser.role)
-    };
+    return null;
   }
 
   async login(loginDto: LoginDto) {
@@ -71,29 +58,19 @@ export class AuthService {
       throw new UnauthorizedException('User already exists');
     }
 
-    // Step 2: Create user in Auth0
-    const auth0User = await this.auth0Service.createUser({
-      email: registerDto.email,
-      password: registerDto.password,
-      name: registerDto.name,
-      role: registerDto.role || 'cashier',
-      tenantId: registerDto.tenantId || 'tenant-1'
-    });
-
-    // Step 3: Create user in local database
+    // Step 2: Create user in local database
     const hashedPassword = await bcrypt.hash(registerDto.password, 12);
     const localUser = await this.usersService.create({
       ...registerDto,
       password: hashedPassword,
     });
 
-    // Step 4: Generate JWT with full context
-    const payload = { 
-      email: localUser.email, 
+    // Step 3: Generate JWT with full context
+    const payload = {
+      email: localUser.email,
       sub: localUser.id,
       tenantId: localUser.tenantId,
       role: localUser.role,
-      auth0Id: auth0User.user_id,
       permissions: this.getUserPermissions(localUser.role)
     };
 
@@ -105,7 +82,6 @@ export class AuthService {
         name: localUser.name,
         role: localUser.role,
         tenantId: localUser.tenantId,
-        auth0Id: auth0User.user_id,
         permissions: this.getUserPermissions(localUser.role)
       },
     };

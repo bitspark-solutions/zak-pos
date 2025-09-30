@@ -1,15 +1,15 @@
 export const auth0Config = {
-  domain: process.env.AUTH0_DOMAIN || 'your-tenant.auth0.com',
-  clientId: process.env.AUTH0_CLIENT_ID || 'your-client-id',
-  clientSecret: process.env.AUTH0_CLIENT_SECRET || 'your-client-secret',
-  audience: process.env.AUTH0_AUDIENCE || 'your-api-identifier',
-  issuerBaseURL: `https://${process.env.AUTH0_DOMAIN || 'your-tenant.auth0.com'}`,
+  domain: process.env.AUTH0_DOMAIN || '',
+  clientId: process.env.AUTH0_CLIENT_ID || '',
+  clientSecret: process.env.AUTH0_CLIENT_SECRET || '',
+  audience: process.env.AUTH0_AUDIENCE || 'https://zakpos.com/api',
+  issuerBaseURL: process.env.AUTH0_DOMAIN ? `https://${process.env.AUTH0_DOMAIN}` : '',
   baseURL: process.env.AUTH0_BASE_URL || 'http://localhost:3000',
-  secret: process.env.AUTH0_SECRET || 'your-long-random-secret',
+  secret: process.env.AUTH0_SECRET || 'zakpos-auth0-secret-key-change-in-production',
   routes: {
-    login: '/auth/login',
-    logout: '/auth/logout',
-    callback: '/auth/callback',
+    login: '/auth/auth0/login',
+    logout: '/auth/auth0/logout',
+    callback: '/auth/auth0/callback',
     postLogoutRedirect: '/'
   }
 };

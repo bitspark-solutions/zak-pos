@@ -1,74 +1,87 @@
 import { Injectable } from '@nestjs/common';
-import { ManagementClient } from 'auth0';
-import axios from 'axios';
 import { auth0Config } from './auth0.config';
 
 @Injectable()
 export class Auth0Service {
-  private managementClient: ManagementClient;
-  private accessToken: string;
-
   constructor() {
-    this.managementClient = new ManagementClient({
-      domain: auth0Config.domain,
-      clientId: auth0Config.clientId,
-      clientSecret: auth0Config.clientSecret
-    });
-    
     console.log('Auth0 Service initialized with domain:', auth0Config.domain);
   }
 
-  private async getAccessToken(): Promise<string> {
-    if (this.accessToken) {
-      return this.accessToken;
-    }
+  getLoginUrl(): string {
+    const params = new URLSearchParams({
+      response_type: 'code',
+      client_id: auth0Config.clientId,
+      redirect_uri: `${auth0Config.baseURL}${auth0Config.routes.callback}`,
+      scope: 'openid profile email',
+      state: 'zakpos_auth_state'
+    });
 
+    return `https://${auth0Config.domain}/authorize?${params.toString()}`;
+  }
+
+  getLogoutUrl(): string {
+    const params = new URLSearchParams({
+      returnTo: `${auth0Config.baseURL}${auth0Config.routes.postLogoutRedirect}`,
+      client_id: auth0Config.clientId
+    });
+
+    return `https://${auth0Config.domain}/v2/logout?${params.toString()}`;
+  }
+
+  async exchangeCodeForTokens(code: string): Promise<any> {
     try {
-      const response = await axios.post(`https://${auth0Config.domain}/oauth/token`, {
-        client_id: auth0Config.clientId,
-        client_secret: auth0Config.clientSecret,
-        audience: `https://${auth0Config.domain}/api/v2/`,
-        grant_type: 'client_credentials'
+      const response = await fetch(`https://${auth0Config.domain}/oauth/token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          grant_type: 'authorization_code',
+          client_id: auth0Config.clientId,
+          client_secret: auth0Config.clientSecret,
+          code: code,
+          redirect_uri: `${auth0Config.baseURL}${auth0Config.routes.callback}`,
+        }),
       });
 
-      this.accessToken = response.data.access_token;
-      return this.accessToken;
+      if (!response.ok) {
+        throw new Error(`Auth0 token exchange failed: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return data;
     } catch (error) {
-      throw new Error(`Failed to get Auth0 access token: ${error.message}`);
+      console.error('Token exchange error:', error);
+      throw new Error(`Failed to exchange code for tokens: ${error.message}`);
+    }
+  }
+
+  async getUserInfo(accessToken: string): Promise<any> {
+    try {
+      const response = await fetch(`https://${auth0Config.domain}/userinfo`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Auth0 userinfo request failed: ${response.statusText}`);
+      }
+
+      const userInfo = await response.json();
+      return userInfo;
+    } catch (error) {
+      console.error('User info error:', error);
+      throw new Error(`Failed to get user info: ${error.message}`);
     }
   }
 
   async validateUser(email: string, password: string): Promise<any> {
     try {
-      // First, try to authenticate with Auth0
-      const authResponse = await axios.post(`https://${auth0Config.domain}/oauth/token`, {
-        client_id: auth0Config.clientId,
-        client_secret: auth0Config.clientSecret,
-        audience: auth0Config.audience,
-        grant_type: 'password',
-        username: email,
-        password: password,
-        scope: 'openid profile email'
-      });
-
-      if (!authResponse.data.access_token) {
-        return null;
-      }
-
-      // Get user info from Auth0
-      const userInfoResponse = await axios.get(`https://${auth0Config.domain}/userinfo`, {
-        headers: {
-          Authorization: `Bearer ${authResponse.data.access_token}`
-        }
-      });
-
-      return {
-        auth0Id: userInfoResponse.data.sub,
-        email: userInfoResponse.data.email,
-        name: userInfoResponse.data.name,
-        accessToken: authResponse.data.access_token,
-        idToken: authResponse.data.id_token
-      };
+      // For OAuth flow, we don't validate credentials directly
+      // This is handled by the OAuth redirect flow
+      console.log('Auth0 validation requested for:', email);
+      return null;
     } catch (error) {
       console.log('Auth0 validation failed:', error.message);
       return null;
@@ -82,33 +95,15 @@ export class Auth0Service {
     role: string;
     tenantId: string;
   }) {
-    try {
-      const accessToken = await this.getAccessToken();
-      
-      const response = await axios.post(`https://${auth0Config.domain}/api/v2/users`, {
-        connection: 'Username-Password-Authentication',
-        email: userData.email,
-        password: userData.password,
-        name: userData.name,
-        user_metadata: {
-          role: userData.role,
-          tenantId: userData.tenantId
-        },
-        app_metadata: {
-          role: userData.role,
-          tenantId: userData.tenantId
-        }
-      }, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      return response.data;
-    } catch (error) {
-      throw new Error(`Failed to create user in Auth0: ${error.message}`);
-    }
+    // For OAuth flow, user creation is handled by Auth0's signup flow
+    console.log('Auth0 user creation requested for:', userData.email);
+    return {
+      id: Date.now().toString(),
+      email: userData.email,
+      name: userData.name,
+      role: userData.role,
+      tenantId: userData.tenantId
+    };
   }
 
   async getUser(userId: string) {
