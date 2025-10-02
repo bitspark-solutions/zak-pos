@@ -6,7 +6,10 @@ import { Logger } from '@nestjs/common';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const logger = new Logger('Bootstrap');
-  
+
+  // Auth0 configuration moved to environment variables
+  // Use auth0.config.ts for proper configuration
+
   // Test database connection on startup
   const databaseService = app.get(DatabaseService);
   try {

@@ -55,6 +55,9 @@ model User {
   name       String
   phone      String?
   email      String   @unique
+  password   String?  // For local authentication
+  role       String   @default("cashier") // owner, manager, cashier
+  tenantId   String   @default("tenant-1")
   locale     String   @default("en")
   status     String   @default("active") // active, inactive, suspended
   createdAt  DateTime @default(now())

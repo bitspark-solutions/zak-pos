@@ -91,7 +91,7 @@ npm test -- auth.performance.spec.ts
 Tests use `.env.test` file with test-specific configurations:
 - Test database: `zakpos_test`
 - Test JWT secret: `test-jwt-secret-key-for-testing-only`
-- Test ports: 3001 (API), 47821 (PostgreSQL), 58392 (Redis)
+- Test ports: 39847 (API), 47821 (PostgreSQL), 58392 (Redis)
 
 ### Jest Configuration
 - **Config file**: `test/jest.config.js`
@@ -200,7 +200,7 @@ npm test -- --testNamePattern="should register a new user"
    - Check test database `zakpos_test` exists
 
 2. **Port Conflicts**
-   - Ensure test port 3001 is available
+   - Ensure test port 39847 is available
    - Check Redis port 58392 is available
 
 3. **Memory Issues**

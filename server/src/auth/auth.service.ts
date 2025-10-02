@@ -16,7 +16,7 @@ export class AuthService {
     // For Auth0 OAuth flow, validation happens in the callback
     // This method is used for direct login attempts
     const user = await this.usersService.findByEmail(email);
-    if (user && await bcrypt.compare(password, user.password)) {
+    if (user && user.password && await bcrypt.compare(password, user.password)) {
       const { password, ...result } = user;
       return {
         ...result,

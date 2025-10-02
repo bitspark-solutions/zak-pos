@@ -158,6 +158,14 @@ services:
       BCRYPT_ROUNDS: 10  # Reduced for faster development
       API_PREFIX: api/v1
       CORS_ORIGIN: "*"  # Allow all origins in development
+      # Auth0 Configuration - Use .env file for credentials
+      AUTH0_DOMAIN: ${AUTH0_DOMAIN:-your-tenant.auth0.com}
+      AUTH0_CLIENT_ID: ${AUTH0_CLIENT_ID:-your-client-id}
+      AUTH0_CLIENT_SECRET: ${AUTH0_CLIENT_SECRET:-your-client-secret}
+      AUTH0_AUDIENCE: ${AUTH0_AUDIENCE:-https://zakpos.com/api}
+      AUTH0_BASE_URL: ${AUTH0_BASE_URL:-http://localhost:39847}
+      AUTH0_SECRET: ${AUTH0_SECRET:-zakpos-auth0-secret-key-change-in-production}
+      FRONTEND_URL: http://localhost:41923
       RATE_LIMIT_TTL: 60
       RATE_LIMIT_LIMIT: 1000  # Higher limit for development
       FILE_UPLOAD_DEST: ./uploads

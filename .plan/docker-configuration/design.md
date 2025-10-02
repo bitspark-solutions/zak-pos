@@ -8,12 +8,12 @@
 graph TB
     subgraph "Docker Network: zakpos-network"
         subgraph "Frontend Services"
-            WEB["NextJS Web Client<br/>Port: 3000"]
+            WEB["NextJS Web Client<br/>Port: 41923"]
             MOBILE["React Native Mobile<br/>Port: 19006"]
         end
         
         subgraph "Backend Services"
-            API["NestJS API Server<br/>Port: 3001"]
+            API["NestJS API Server<br/>Port: 39847"]
         end
         
         subgraph "Data Layer"
@@ -148,11 +148,11 @@ redis-cli --no-auth-warning -a $REDIS_PASSWORD ping
 
 **Image:** Custom build from `node:20-alpine`
 **Container Name:** `zakpos-api`
-**Port Mapping:** `3001:3001`
+**Port Mapping:** `39847:3000`
 
 **Environment Variables:**
 - `NODE_ENV=production`
-- `PORT=3001`
+- `PORT=3000`
 - `DATABASE_URL=postgresql://zakpos_user:zakpos_secure_password_2024@zakpos-postgres:5432/zakpos_db`
 - `REDIS_URL=redis://:redis_secure_password_2024@zakpos-redis:6379`
 - `KAFKA_BROKERS=zakpos-kafka:9092`
@@ -170,12 +170,12 @@ redis-cli --no-auth-warning -a $REDIS_PASSWORD ping
 
 **Image:** Custom build from `node:20-alpine`
 **Container Name:** `zakpos-web`
-**Port Mapping:** `3000:3000`
+**Port Mapping:** `41923:3000`
 
 **Environment Variables:**
 - `NODE_ENV=production`
-- `NEXT_PUBLIC_API_URL=http://localhost:3001/api/v1`
-- `NEXT_PUBLIC_WS_URL=ws://localhost:3001`
+- `NEXT_PUBLIC_API_URL=http://localhost:39847/api/v1`
+- `NEXT_PUBLIC_WS_URL=ws://localhost:39847`
 - `PORT=3000`
 
 **Volumes:**
@@ -187,13 +187,13 @@ redis-cli --no-auth-warning -a $REDIS_PASSWORD ping
 
 ### 2.7 React Native Mobile App
 
-**Image:** Custom build from `node:20-alpine`
+**Image:** Custom build from `node:22.19-alpine`
 **Container Name:** `zakpos-mobile`
 **Port Mapping:** `19006:19006`
 
 **Environment Variables:**
 - `NODE_ENV=development`
-- `EXPO_PUBLIC_API_URL=http://localhost:3001/api/v1`
+- `EXPO_PUBLIC_API_URL=http://localhost:39847/api/v1`
 - `EXPO_DEVTOOLS_LISTEN_ADDRESS=0.0.0.0`
 
 **Volumes:**
@@ -226,7 +226,7 @@ Services communicate using container names as hostnames:
 - Database: `zakpos-postgres:5432`
 - Cache: `zakpos-redis:6379`
 - Message Queue: `zakpos-kafka:9092`
-- API: `zakpos-api:3001`
+- API: `zakpos-api:3000`
 
 ## 4. Data Models
 
@@ -478,7 +478,7 @@ All services implement graceful shutdown:
 # Health check testing
 docker-compose exec zakpos-postgres pg_isready
 docker-compose exec zakpos-redis redis-cli ping
-docker-compose exec zakpos-api curl -f http://localhost:3001/health
+docker-compose exec zakpos-api curl -f http://localhost:39847/health
 ```
 
 ### 12.2 Integration Testing

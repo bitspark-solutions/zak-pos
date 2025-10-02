@@ -50,77 +50,14 @@ export class AuthController {
 
   @Get('auth0/login')
   async auth0Login(@Res() res: Response) {
-    // Redirect to Auth0 login page
-    const loginUrl = this.auth0Service.getLoginUrl();
-    res.redirect(loginUrl);
-  }
-
-  @Get('auth0/callback')
-  async auth0Callback(@Query('code') code: string, @Query('state') state: string, @Res() res: Response) {
-    try {
-      if (!code) {
-        throw new Error('Authorization code not provided');
-      }
-
-      // Exchange code for tokens
-      const tokenData = await this.auth0Service.exchangeCodeForTokens(code);
-
-      // Get user info
-      const userInfo = await this.auth0Service.getUserInfo(tokenData.access_token);
-
-      // Check if user exists in local database
-      const localUser = await this.usersService.findByEmail(userInfo.email);
-
-      if (!localUser) {
-        // Create user in local database if they don't exist
-        const newUser = await this.usersService.create({
-          email: userInfo.email,
-          name: userInfo.name,
-          password: 'auth0-managed', // Auth0 manages the password
-          role: userInfo.user_metadata?.role || 'cashier',
-          tenantId: userInfo.user_metadata?.tenantId || 'tenant-1'
-        });
-
-        // Generate JWT token with user context
-        const payload = {
-          email: newUser.email,
-          sub: newUser.id,
-          tenantId: newUser.tenantId,
-          role: newUser.role,
-          auth0Id: userInfo.sub,
-          permissions: this.getUserPermissions(newUser.role)
-        };
-
-        const jwtToken = this.jwtService.sign(payload);
-
-        // Redirect to frontend with token
-        res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3001'}?token=${jwtToken}`);
-      } else {
-        // User exists, generate JWT with existing data
-        const payload = {
-          email: localUser.email,
-          sub: localUser.id,
-          tenantId: localUser.tenantId,
-          role: localUser.role,
-          auth0Id: userInfo.sub,
-          permissions: this.getUserPermissions(localUser.role)
-        };
-
-        const jwtToken = this.jwtService.sign(payload);
-
-        // Redirect to frontend with token
-        res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3001'}?token=${jwtToken}`);
-      }
-    } catch (error) {
-      console.error('Auth0 callback error:', error);
-      res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3001'}?error=auth_failed`);
-    }
+    // Redirect to Auth0 login - the express-openid-connect middleware handles /login
+    res.redirect('/login');
   }
 
   @Get('auth0/logout')
   async auth0Logout(@Res() res: Response) {
-    const logoutUrl = this.auth0Service.getLogoutUrl();
-    res.redirect(logoutUrl);
+    // Redirect to Auth0 logout - the express-openid-connect middleware handles /logout
+    res.redirect('/logout');
   }
 
   private getUserPermissions(role: string): string[] {

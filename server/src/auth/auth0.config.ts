@@ -4,7 +4,7 @@ export const auth0Config = {
   clientSecret: process.env.AUTH0_CLIENT_SECRET || '',
   audience: process.env.AUTH0_AUDIENCE || 'https://zakpos.com/api',
   issuerBaseURL: process.env.AUTH0_DOMAIN ? `https://${process.env.AUTH0_DOMAIN}` : '',
-  baseURL: process.env.AUTH0_BASE_URL || 'http://localhost:3000',
+  baseURL: process.env.AUTH0_BASE_URL || 'http://localhost:39847',
   secret: process.env.AUTH0_SECRET || 'zakpos-auth0-secret-key-change-in-production',
   routes: {
     login: '/auth/auth0/login',

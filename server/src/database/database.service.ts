@@ -1,40 +1,30 @@
 import { Injectable } from '@nestjs/common';
-import { Pool } from 'pg';
+import { PrismaClient } from '@prisma/client';
 
 @Injectable()
 export class DatabaseService {
-  private pool: Pool;
+  private prisma: PrismaClient;
 
   constructor() {
-    this.pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
+    this.prisma = new PrismaClient({
+      datasources: {
+        db: {
+          url: process.env.DATABASE_URL,
+        },
+      },
     });
   }
 
-  async query(text: string, params?: any[]) {
-    const client = await this.pool.connect();
-    try {
-      const result = await client.query(text, params);
-      return result;
-    } finally {
-      client.release();
-    }
-  }
-
   async findUserByEmail(email: string) {
-    const result = await this.query(
-      'SELECT * FROM users WHERE email = $1',
-      [email]
-    );
-    return result.rows[0] || null;
+    return await this.prisma.user.findUnique({
+      where: { email }
+    });
   }
 
   async findUserById(id: string) {
-    const result = await this.query(
-      'SELECT * FROM users WHERE id = $1',
-      [id]
-    );
-    return result.rows[0] || null;
+    return await this.prisma.user.findUnique({
+      where: { id }
+    });
   }
 
   async createUser(userData: {
@@ -44,20 +34,17 @@ export class DatabaseService {
     role?: string;
     tenantId?: string;
   }) {
-    const result = await this.query(
-      `INSERT INTO users (id, email, password, name, role, tenantId, createdat, updatedat)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
-       RETURNING *`,
-      [
-        Date.now().toString(),
-        userData.email,
-        userData.password,
-        userData.name,
-        userData.role || 'cashier',
-        userData.tenantId || 'tenant-1'
-      ]
-    );
-    return result.rows[0];
+    return await this.prisma.user.create({
+      data: {
+        email: userData.email,
+        password: userData.password,
+        name: userData.name,
+        role: userData.role || 'cashier',
+        tenantId: userData.tenantId || 'tenant-1',
+        status: 'active',
+        locale: 'en',
+      }
+    });
   }
 
   async updateUser(id: string, userData: Partial<{
@@ -67,50 +54,25 @@ export class DatabaseService {
     role: string;
     tenantId: string;
   }>) {
-    const fields: string[] = [];
-    const values: any[] = [];
-    let paramCount = 1;
-
-    Object.entries(userData).forEach(([key, value]) => {
-      if (value !== undefined) {
-        fields.push(`${key} = $${paramCount}`);
-        values.push(value);
-        paramCount++;
-      }
+    return await this.prisma.user.update({
+      where: { id },
+      data: userData
     });
-
-    if (fields.length === 0) {
-      return null;
-    }
-
-    fields.push(`updatedat = NOW()`);
-    values.push(id);
-
-    const result = await this.query(
-      `UPDATE users SET ${fields.join(', ')} WHERE id = $${paramCount} RETURNING *`,
-      values
-    );
-    return result.rows[0] || null;
   }
 
   async deleteUser(id: string) {
-    const result = await this.query(
-      'DELETE FROM users WHERE id = $1 RETURNING *',
-      [id]
-    );
-    return result.rows[0] || null;
+    return await this.prisma.user.delete({
+      where: { id }
+    });
   }
 
   async findAllUsers() {
-    const result = await this.query(
-      'SELECT id, email, name, role, tenantId, createdat, updatedat FROM users'
-    );
-    return result.rows;
+    return await this.prisma.user.findMany();
   }
 
   async isConnected(): Promise<boolean> {
     try {
-      await this.query('SELECT 1');
+      await this.prisma.$queryRaw`SELECT 1`;
       return true;
     } catch (error) {
       return false;
@@ -133,7 +95,7 @@ export class DatabaseService {
 
   async testConnection() {
     try {
-      await this.query('SELECT 1');
+      await this.prisma.$queryRaw`SELECT 1`;
       return { status: 'connected', message: 'Database connection successful' };
     } catch (error) {
       throw new Error(`Database connection failed: ${error.message}`);
