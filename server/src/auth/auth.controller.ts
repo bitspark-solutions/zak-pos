@@ -34,6 +34,41 @@ export class AuthController {
     return req.user;
   }
 
+  @Get('health')
+  async getAuthHealth() {
+    const auth0Config = this.auth0Service.getConfig();
+    const userCount = await this.usersService.count();
+
+    return {
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      authentication: {
+        local: {
+          enabled: true,
+          userCount: userCount,
+          registration: true,
+          login: true
+        },
+        auth0: {
+          enabled: !!(auth0Config.domain && auth0Config.clientId && auth0Config.clientSecret),
+          domain: auth0Config.domain || 'not configured',
+          clientId: auth0Config.clientId ? 'configured' : 'not configured',
+          clientSecret: auth0Config.clientSecret ? 'configured' : 'not configured',
+          oauthFlow: auth0Config.domain ? true : false
+        }
+      },
+      jwt: {
+        enabled: true,
+        secret: process.env.JWT_SECRET ? 'configured' : 'not configured',
+        expiresIn: process.env.JWT_EXPIRES_IN || '7d'
+      },
+      database: {
+        connected: true,
+        users: userCount
+      }
+    };
+  }
+
   @UseGuards(JwtAuthGuard)
   @Post('refresh')
   async refresh(@Request() req) {

@@ -7,6 +7,10 @@ export class Auth0Service {
     console.log('Auth0 Service initialized with domain:', auth0Config.domain);
   }
 
+  getConfig() {
+    return auth0Config;
+  }
+
   getLoginUrl(): string {
     const params = new URLSearchParams({
       response_type: 'code',

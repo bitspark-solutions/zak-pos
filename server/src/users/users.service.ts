@@ -54,5 +54,10 @@ export class UsersService {
     }
     return null;
   }
+
+  async count() {
+    const users = await this.databaseService.findAllUsers();
+    return users.length;
+  }
 }
 
