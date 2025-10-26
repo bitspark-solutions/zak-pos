@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  ocr:
+    # Development overrides
+    environment:
+      - DEBUG=true
+      - LOG_LEVEL=debug
+      - OCR_ENABLE_GPU=false
+      - OCR_WORKERS=2
+    ports:
+      - "58000:8000"  # Override the port mapping for development
+    volumes:
+      - ./:/app  # Mount source code for development
+      - ocr_logs:/app/logs
+    command: ["uvicorn", "main:app", "--reload", "--host", "0.0.0.0", "--port", "8000"]
+
+  # Development tools
+  ocr-dev:
+    image: zakpos-ocr:dev
+    container_name: zakpos-ocr-dev
+    environment:
+      - DEBUG=true
+      - LOG_LEVEL=debug
+      - OCR_ENABLE_GPU=false
+    ports:
+      - "58001:8000"
+    volumes:
+      - ./:/app
+      - ocr_dev_logs:/app/logs
+    command: ["uvicorn", "main:app", "--reload", "--host", "0.0.0.0", "--port", "8000"]
+    profiles: ["dev"]
+

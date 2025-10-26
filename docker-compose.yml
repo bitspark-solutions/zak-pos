@@ -284,6 +284,60 @@ services:
           memory: 512M
           cpus: '0.25'
 
+  # OCR Server (Image Processing)
+  ocr:
+    build:
+      context: ./services/ocr
+      dockerfile: Dockerfile
+      target: ${OCR_BUILD_TARGET:-runtime}
+      args:
+        BUILD_DATE: ${BUILD_DATE}
+        VCS_REF: ${VCS_REF}
+        VERSION: ${VERSION}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: ${OCR_PORT:-8000}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres123}@postgres:5432/${POSTGRES_DB:-zakpos_dev}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis123}@redis:6379
+      KAFKA_BROKERS: kafka:29092
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      OCR_MODEL_PRIMARY: ${OCR_MODEL_PRIMARY:-microsoft/trocr-small-printed}
+      OCR_MODEL_FALLBACK: ${OCR_MODEL_FALLBACK:-tesseract}
+      OCR_ENABLE_GPU: ${OCR_ENABLE_GPU:-false}
+      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
+      CORS_ORIGINS: ${CORS_ORIGIN:-http://localhost:41923,http://localhost:96140}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      - ocr_logs:/app/logs
+      - ocr_temp:/tmp
+    ports:
+      - "${OCR_PORT:-58000}:8000"
+    networks:
+      - zakpos-backend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: '2'
+        reservations:
+          memory: 1G
+          cpus: '0.5'
 
   # ---------------------------------------------------------------------------
   # REVERSE PROXY & LOAD BALANCER
@@ -384,8 +438,23 @@ volumes:
       type: none
       o: bind
       device: ./data/logs/web
-  
-  
+
+  # OCR volumes
+  ocr_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/logs/ocr
+
+  ocr_temp:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/temp/ocr
+
+
   nginx_logs:
     driver: local
     driver_opts:
@@ -430,9 +499,11 @@ networks:
 #
 # Start specific services:
 # docker-compose up -d postgres redis api
+# docker-compose up -d postgres redis kafka ocr
 #
 # View logs:
 # docker-compose logs -f api
+# docker-compose logs -f ocr
 #
 # Scale services:
 # docker-compose up -d --scale api=3
@@ -452,6 +523,8 @@ networks:
 # Execute commands in containers:
 # docker-compose exec api npm run migration:run
 # docker-compose exec postgres psql -U postgres -d pocket_pos_dev
+# docker-compose exec ocr python3 -c "from app.services.ocr_service import OCRService; print('OCR Ready')"
+# docker-compose exec ocr curl http://localhost:8000/api/v1/health
 #
 # =============================================================================
 
@@ -473,9 +546,17 @@ networks:
 # - NODE_ENV (development|production)
 # - API_PORT (default: 3000)
 # - WEB_PORT (default: 3001)
+# - OCR_PORT (default: 8000)
 # - POSTGRES_PORT (default: 5432)
 # - REDIS_PORT (default: 6379)
 # - KAFKA_PORT (default: 9092)
+#
+# OCR-specific environment variables:
+# - OCR_MODEL_PRIMARY (default: microsoft/trocr-small-printed)
+# - OCR_MODEL_FALLBACK (default: tesseract)
+# - OCR_ENABLE_GPU (default: false)
+# - OCR_CONFIDENCE_THRESHOLD (default: 0.8)
+# - MAX_IMAGE_SIZE_MB (default: 10)
 #
 # =============================================================================
 

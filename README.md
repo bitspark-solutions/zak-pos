@@ -14,6 +14,8 @@
 
 *A modern, multi-tenant SaaS POS platform designed for Bangladeshi shopkeepers and scalable globally*
 
+*🚀 **NEW:** Ultra-fast OCR Server with Microsoft TrOCR integration for instant product scanning*
+
 [Quick Start](#quick-start) • [Features](#features) • [User Journey](#user-journey--execution-flow) • [Business Model](#business-model--monetization) • [Market Strategy](#target-market--strategic-positioning) • [Development](#development) • [API Documentation](#api-documentation)
 
 </div>
@@ -313,6 +315,14 @@ This layered approach makes ZakPOS **investor-ready** and **scalable beyond Bang
 - **Cache**: Redis
 - **Validation**: class-validator, class-transformer
 
+### OCR Server (Image Processing)
+- **Framework**: FastAPI (Python)
+- **Primary OCR**: Microsoft TrOCR (Hugging Face) - 61.4M parameters
+- **Fallback OCR**: Tesseract OCR with Bengali support
+- **Performance**: <59ms processing time target
+- **Image Processing**: OpenCV, PIL, scikit-image
+- **GPU Support**: CUDA acceleration for 10x speedup
+
 ### Frontend
 - **Framework**: Next.js 15.x
 - **UI Library**: React 19.x
@@ -351,8 +361,9 @@ This layered approach makes ZakPOS **investor-ready** and **scalable beyond Bang
           ┌───────────────────┼───────────────────┐
           │                   │                   │
 ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-│   API Server    │ │   WebSocket     │ │   File Upload   │
-│   (NestJS)      │ │   Server        │ │   Service       │
+│   API Server    │ │   WebSocket     │ │   OCR Server    │
+│   (NestJS)      │ │   Server        │ │   (FastAPI)     │
+│                 │ │                 │ │   ⚡ <59ms       │
 └─────────┬───────┘ └─────────┬───────┘ └─────────┬───────┘
           │                   │                   │
           └───────────────────┼───────────────────┘
