@@ -317,3 +317,4 @@ async def log_ocr_processing(job_id: str, shop_id: str, ocr_type: str):
             duration_ms=round(duration * 1000, 2)
         )
 
+

@@ -341,3 +341,4 @@ const uploadImage = async (file: File) => {
 
 **Built for ZakPOS** - Multi-tenant SaaS POS platform for Bangladeshi shopkeepers
 
+
