@@ -21,12 +21,7 @@ class Settings(BaseSettings):
     PORT: int = 8000
 
     # CORS Settings
-    CORS_ORIGINS: List[str] = [
-        "http://localhost:3000",  # API Gateway
-        "http://localhost:41923",  # Web Client
-        "http://localhost:53851",  # Mobile Dev
-        "http://localhost:96140",  # Additional mobile
-    ]
+    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:41923,http://localhost:53851,http://localhost:96140"
 
     # Database Configuration
     DATABASE_URL: str = "postgresql://postgres:postgres123@localhost:47821/zakpos_dev"
@@ -104,7 +99,7 @@ def get_cors_origins() -> List[str]:
             "http://127.0.0.1:3000",
             "http://127.0.0.1:41923",
         ]
-    return settings.CORS_ORIGINS
+    return settings.CORS_ORIGINS.split(",") if settings.CORS_ORIGINS else []
 
 
 def is_development() -> bool:

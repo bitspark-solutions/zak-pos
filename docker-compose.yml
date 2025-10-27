@@ -289,7 +289,6 @@ services:
     build:
       context: ./services/ocr
       dockerfile: Dockerfile
-      target: ${OCR_BUILD_TARGET:-runtime}
       args:
         BUILD_DATE: ${BUILD_DATE}
         VCS_REF: ${VCS_REF}
@@ -315,7 +314,7 @@ services:
       OCR_MODEL_FALLBACK: ${OCR_MODEL_FALLBACK:-tesseract}
       OCR_ENABLE_GPU: ${OCR_ENABLE_GPU:-false}
       JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
-      CORS_ORIGINS: ${CORS_ORIGIN:-http://localhost:41923,http://localhost:96140}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:41923,http://localhost:96140}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes:
       - ocr_logs:/app/logs

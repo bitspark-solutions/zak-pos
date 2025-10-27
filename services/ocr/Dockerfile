@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y \
     tesseract-ocr \
     tesseract-ocr-eng \
     libtesseract-dev \
-    libgl1-mesa-glx \
+    libgl1-mesa-dri \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
@@ -14,6 +14,16 @@ RUN apt-get update && apt-get install -y \
     curl \
     libgthread-2.0-0 \
     libgtk-3-0 \
+    libglu1-mesa \
+    libxrandr2 \
+    libxss1 \
+    libxcursor1 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxi6 \
+    libxtst6 \
+    libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
