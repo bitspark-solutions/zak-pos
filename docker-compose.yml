@@ -316,9 +316,6 @@ services:
       JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:41923,http://localhost:96140}
       LOG_LEVEL: ${LOG_LEVEL:-info}
-    volumes:
-      - ocr_logs:/app/logs
-      - ocr_temp:/tmp
     ports:
       - "${OCR_PORT:-58000}:8000"
     networks:

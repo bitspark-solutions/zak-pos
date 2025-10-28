@@ -15,7 +15,6 @@ import json
 from app.core.config import settings
 from app.core.database import check_database_health
 from app.core.redis import check_redis_health
-from app.services.ocr_service import OCRService
 
 # Configure structured logging
 logger = structlog.get_logger(__name__)
@@ -163,6 +162,7 @@ async def get_system_health() -> dict:
 
     # Check OCR service
     try:
+        from app.services.ocr_service import OCRService
         ocr_service = OCRService.get_instance()
         ocr_ready = ocr_service.is_ready()
         health_status["services"]["ocr_service"] = {"status": "ready" if ocr_ready else "not_ready"}
@@ -188,6 +188,7 @@ async def get_system_health() -> dict:
 async def get_loaded_models_info() -> dict:
     """Get information about loaded OCR models."""
     try:
+        from app.services.ocr_service import OCRService
         ocr_service = OCRService.get_instance()
         models_info = {
             "status": "loaded",
@@ -316,5 +317,6 @@ async def log_ocr_processing(job_id: str, shop_id: str, ocr_type: str):
             ocr_type=ocr_type,
             duration_ms=round(duration * 1000, 2)
         )
+
 
 
