@@ -1,0 +1,58 @@
+# EditorConfig is awesome: https://EditorConfig.org
+
+# top-most EditorConfig file
+root = true
+
+# All files
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# Python files (PEP 8 requires final newline)
+[*.py]
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# TypeScript/JavaScript files
+[*.{ts,tsx,js,jsx,mjs,cjs}]
+indent_style = space
+indent_size = 2
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# JSON files
+[*.json]
+indent_style = space
+indent_size = 2
+insert_final_newline = true
+
+# YAML files
+[*.{yml,yaml}]
+indent_style = space
+indent_size = 2
+insert_final_newline = true
+
+# Markdown files
+[*.md]
+trim_trailing_whitespace = false
+insert_final_newline = true
+
+# Makefile (tabs required)
+[Makefile]
+indent_style = tab
+insert_final_newline = true
+
+# Docker files
+[Dockerfile*]
+insert_final_newline = true
+
+# Config files
+[*.{conf,config}]
+indent_style = space
+indent_size = 2
+insert_final_newline = true
+

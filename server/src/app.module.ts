@@ -1,0 +1,35 @@
+import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
+import { DatabaseModule } from './database/database.module';
+import { HealthController } from './health/health.controller';
+import { DatabaseConnectionMiddleware } from './middleware/database-connection.middleware';
+import { AuthModule } from './auth/auth.module';
+import { UsersModule } from './users/users.module';
+import { ProductModule } from './product/product.module';
+import { CategoryModule } from './category/category.module';
+import { InventoryModule } from './inventory/inventory.module';
+import { CartModule } from './cart/cart.module';
+import { SalesModule } from './sales/sales.module';
+
+@Module({
+  imports: [
+    DatabaseModule,
+    AuthModule,
+    UsersModule,
+    ProductModule,
+    CategoryModule,
+    InventoryModule,
+    CartModule,
+    SalesModule,
+  ],
+  controllers: [AppController, HealthController],
+  providers: [AppService],
+})
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer
+      .apply(DatabaseConnectionMiddleware)
+      .forRoutes('*');
+  }
+}

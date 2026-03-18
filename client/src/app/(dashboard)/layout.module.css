@@ -1,0 +1,38 @@
+.container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: #f9fafb;
+}
+
+.content {
+  display: flex;
+  flex: 1;
+  margin-top: 64px; /* Header height */
+}
+
+.main {
+  flex: 1;
+  padding: 2rem;
+  overflow-y: auto;
+  margin-left: 250px; /* Sidebar width on large screens */
+  min-height: calc(100vh - 64px);
+}
+
+@media (max-width: 1024px) {
+  .content {
+    flex-direction: column;
+  }
+
+  .main {
+    padding: 1rem;
+    margin-left: 200px; /* Sidebar width on medium screens */
+  }
+}
+
+@media (max-width: 768px) {
+  .main {
+    margin-left: 0; /* No margin on mobile - sidebar is relative */
+  }
+}
+
