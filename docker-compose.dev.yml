@@ -48,7 +48,7 @@ services:
     environment:
       REDIS_PASSWORD: redis123
     ports:
-      - "58392:6379"
+      - "46392:6379"
     volumes:
       - redis_dev_data:/data
       - ./docker/redis/redis.conf:/etc/redis/redis.conf:ro
@@ -150,7 +150,7 @@ services:
     environment:
       NODE_ENV: development
       PORT: 3000
-      DATABASE_URL: postgresql://postgres:postgres123@zakpos-postgres:5432/zakpos_dev
+      DATABASE_URL: postgresql://postgres:postgres123@postgres:5432/zakpos_dev
       REDIS_URL: redis://:redis123@redis:6379
       KAFKA_BROKERS: kafka:29092
       JWT_SECRET: dev-jwt-secret-change-in-production
@@ -280,7 +280,7 @@ services:
     volumes:
       - redis_insight_data:/db
     ports:
-      - "58001:8001"
+      - "46301:8001"
     networks:
       - zakpos-backend
     depends_on:
@@ -523,7 +523,7 @@ volumes:
 #
 # Database Connections:
 # - PostgreSQL: localhost:47821 (postgres / postgres123)
-# - Redis: localhost:58392 (password: redis123)
+# - Redis: localhost:46392 (password: redis123)
 # - Kafka: localhost:54629
 #
 # Debug Ports:

@@ -9,7 +9,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { SalesService } from './sales.service';
-import { CommitSaleDto, RefundSaleDto } from './interfaces/sales.interface';
+import type { CommitSaleDto, RefundSaleDto } from './interfaces/sales.interface';
 
 @Controller('sales')
 export class SalesController {

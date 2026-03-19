@@ -108,6 +108,10 @@ export class ProductQueryDto {
   @IsOptional()
   @Transform(({ value }) => value === 'true' || value === true)
   isActive?: boolean;
+
+  @IsString()
+  @IsOptional()
+  tenantId?: string;
 }
 
 export class BarcodeLookupDto {

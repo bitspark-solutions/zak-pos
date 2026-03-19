@@ -10,7 +10,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { CartService } from './cart.service';
-import { CreateCartDto, AddLineDto, UpdateLineDto } from './interfaces/cart.interface';
+import type { CreateCartDto, AddLineDto, UpdateLineDto } from './interfaces/cart.interface';
 
 @Controller('carts')
 export class CartController {

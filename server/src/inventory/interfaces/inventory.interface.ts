@@ -18,7 +18,7 @@ export interface IInventoryWithProduct extends IInventory {
   };
   variant?: {
     id: string;
-    attributes: Record<string, string>;
+    attributes: Record<string, string> | null;
   };
 }
 

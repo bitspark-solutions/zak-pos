@@ -41,6 +41,9 @@ model Tenant {
   events          Event[]
   auditLogs       AuditLog[]
   payments        Payment[]
+  sales           Sale[]
+  saleLines       SaleLine[]
+  inventoryMovements InventoryMovement[]
 
   @@map("tenants")
 }
@@ -442,6 +445,7 @@ model Inventory {
   productId       String
   variantId       String?
   quantityOnHand  Decimal  @default(0) @db.Decimal(15, 3)
+  quantityReserved Decimal @default(0) @db.Decimal(15, 3)
   valuationMethod String   @default("WAVC") // WAVC, FIFO
   avgCost         Decimal  @default(0) @db.Decimal(15, 2)
   fifoLayers      Json?    // FIFO layers for FIFO valuation
@@ -454,6 +458,26 @@ model Inventory {
 
   @@unique([shopId, productId, variantId])
   @@map("inventory")
+}
+
+model InventoryMovement {
+  id            String   @id @default(cuid())
+  tenantId      String
+  shopId        String
+  productId     String
+  variantId     String?
+  movementType  String   // IN, OUT, ADJUSTMENT
+  quantity      Decimal  @db.Decimal(15, 3)
+  unitCost      Decimal? @db.Decimal(15, 2)
+  referenceType String?  // MANUAL_ADJUSTMENT, SALE, PURCHASE
+  referenceId   String?
+  notes         String?
+  createdAt     DateTime @default(now())
+
+  // Relationships
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("inventory_movements")
 }
 
 model Batch {
@@ -551,6 +575,7 @@ model PurchaseReturn {
 
 model Sale {
   id            String   @id @default(cuid())
+  tenantId      String
   shopId        String
   customerId    String?
   cashierId     String
@@ -568,12 +593,13 @@ model Sale {
   updatedAt     DateTime @updatedAt
 
   // Relationships
-  shop      Shop        @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  customer  Customer?   @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  cashier   User        @relation("CashierSales", fields: [cashierId], references: [id], onDelete: Cascade)
-  saleLines SaleLine[]
-  payments  Payment[]
-  returns   Return[]
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  shop        Shop        @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  customer    Customer?   @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  cashier     User        @relation("CashierSales", fields: [cashierId], references: [id], onDelete: Cascade)
+  saleLines   SaleLine[]
+  payments    Payment[]
+  returns     Return[]
 
   @@map("sales")
 }
@@ -581,6 +607,7 @@ model Sale {
 model SaleLine {
   id        String   @id @default(cuid())
   saleId    String
+  tenantId  String
   productId String
   variantId String?
   batchId   String?
@@ -593,6 +620,7 @@ model SaleLine {
 
   // Relationships
   sale    Sale           @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  tenant  Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   product Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
   variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
   batch   Batch?         @relation(fields: [batchId], references: [id], onDelete: Cascade)

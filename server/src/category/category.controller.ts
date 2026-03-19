@@ -10,8 +10,9 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { CategoryService, CreateCategoryDto, UpdateCategoryDto, CategoryTreeNode } from './category.service';
-import { ICategory } from './interfaces/category.interface';
+import { CategoryService } from './category.service';
+import type { CreateCategoryDto, UpdateCategoryDto, CategoryTreeNode } from './category.service';
+import type { ICategory } from './interfaces/category.interface';
 
 @Controller('categories')
 export class CategoryController {

@@ -47,7 +47,10 @@ export class InventoryService {
       avgCost: Number(inv.avgCost),
       updatedAt: inv.updatedAt,
       product: inv.product,
-      variant: inv.variant,
+      variant: inv.variant ? {
+        id: inv.variant.id,
+        attributes: (inv.variant.attributes as Record<string, string>) ?? null,
+      } : undefined,
     }));
   }
 
@@ -104,6 +107,17 @@ export class InventoryService {
         }
         newQuantity = dto.quantity;
         newAvgCost = dto.unitCost || 0;
+
+        // Create the inventory record
+        inventory = await tx.inventory.create({
+          data: {
+            shopId: dto.shopId,
+            productId: dto.productId,
+            variantId: dto.variantId || null,
+            quantityOnHand: newQuantity,
+            avgCost: newAvgCost,
+          },
+        });
       } else {
         const currentQty = Number(inventory.quantityOnHand);
 

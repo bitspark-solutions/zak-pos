@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto';
 import { DatabaseService } from '../database/database.service';
 import { CartService } from '../cart/cart.service';
 import { InventoryService } from '../inventory/inventory.service';
-import { CommitSaleDto, RefundSaleDto, ISale, ISaleLine } from './interfaces/sales.interface';
+import type { CommitSaleDto, RefundSaleDto, ISale, ISaleLine } from './interfaces/sales.interface';
 
 @Injectable()
 export class SalesService {
@@ -59,6 +59,7 @@ export class SalesService {
         const saleLine = await tx.saleLine.create({
           data: {
             saleId: sale.id,
+            tenantId: cart.tenantId,
             productId: line.productId,
             variantId: line.variantId,
             qty: line.qty,
