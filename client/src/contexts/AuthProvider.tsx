@@ -78,7 +78,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setUser(response.user);
 
       // Redirect based on role
-      if (response.user.role === 'owner' || response.user.role === 'manager') {
+      if (response.user.role === 'admin') {
+        router.push(ROUTES.ADMIN_DASHBOARD);
+      } else if (response.user.role === 'owner' || response.user.role === 'manager') {
         router.push(ROUTES.DASHBOARD);
       } else if (response.user.role === 'cashier') {
         router.push(ROUTES.POS);
@@ -110,7 +112,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setUser(response.user);
 
       // Redirect based on role
-      if (response.user.role === 'owner' || response.user.role === 'manager') {
+      if (response.user.role === 'admin') {
+        router.push(ROUTES.ADMIN_DASHBOARD);
+      } else if (response.user.role === 'owner' || response.user.role === 'manager') {
         router.push(ROUTES.DASHBOARD);
       } else if (response.user.role === 'cashier') {
         router.push(ROUTES.POS);

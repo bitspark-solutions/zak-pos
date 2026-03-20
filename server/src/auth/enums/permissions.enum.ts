@@ -30,18 +30,40 @@ export enum Permission {
   // System Administration
   SYSTEM_ADMIN = 'system:admin',
   TENANT_MANAGE = 'tenant:manage',
+  TENANT_CREATE = 'tenant:create',
+
+  // Invoice Management
+  INVOICE_CREATE = 'invoice:create',
+  INVOICE_READ = 'invoice:read',
+  INVOICE_UPDATE = 'invoice:update',
+  INVOICE_DELETE = 'invoice:delete',
+  INVOICE_SEND = 'invoice:send',
+  INVOICE_CONFIRM = 'invoice:confirm',
 }
 
 export enum Role {
-  OWNER = 'owner',
-  MANAGER = 'manager',
-  CASHIER = 'cashier',
+  ADMIN = 'admin',     // Platform admin - manages tenants/owners
+  OWNER = 'owner',    // Business owner
+  MANAGER = 'manager', // Employee - manages products/orders
+  CASHIER = 'cashier', // POS operator
 }
 
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
+  [Role.ADMIN]: [
+    // Admin manages tenants and owners - no operational permissions
+    Permission.USER_CREATE,     // Can create owners
+    Permission.USER_READ,
+    Permission.USER_UPDATE,
+    Permission.USER_DELETE,
+    Permission.TENANT_CREATE,   // Can create new tenants/companies
+    Permission.TENANT_MANAGE,
+    Permission.REPORT_READ,
+    Permission.REPORT_EXPORT,
+    Permission.SYSTEM_ADMIN,
+  ],
   [Role.OWNER]: [
-    // Owner has all permissions
-    Permission.USER_CREATE,
+    // Owner has all business permissions
+    Permission.USER_CREATE,      // Can create managers/cashiers
     Permission.USER_READ,
     Permission.USER_UPDATE,
     Permission.USER_DELETE,
@@ -57,16 +79,18 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.SALE_READ,
     Permission.SALE_UPDATE,
     Permission.SALE_DELETE,
+    Permission.INVOICE_CREATE,
+    Permission.INVOICE_READ,
+    Permission.INVOICE_UPDATE,
+    Permission.INVOICE_DELETE,
+    Permission.INVOICE_SEND,
+    Permission.INVOICE_CONFIRM,
     Permission.REPORT_READ,
     Permission.REPORT_EXPORT,
-    Permission.SYSTEM_ADMIN,
     Permission.TENANT_MANAGE,
   ],
   [Role.MANAGER]: [
-    // Manager has most permissions except system admin
-    Permission.USER_CREATE,
-    Permission.USER_READ,
-    Permission.USER_UPDATE,
+    // Manager manages products and orders - NO user creation
     Permission.PRODUCT_CREATE,
     Permission.PRODUCT_READ,
     Permission.PRODUCT_UPDATE,
@@ -79,15 +103,23 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.SALE_READ,
     Permission.SALE_UPDATE,
     Permission.SALE_DELETE,
+    Permission.INVOICE_CREATE,
+    Permission.INVOICE_READ,
+    Permission.INVOICE_UPDATE,
+    Permission.INVOICE_DELETE,
+    Permission.INVOICE_SEND,
+    Permission.INVOICE_CONFIRM,
     Permission.REPORT_READ,
-    Permission.REPORT_EXPORT,
   ],
   [Role.CASHIER]: [
-    // Cashier has limited permissions for daily operations
+    // Cashier has limited permissions - receive/confirm invoices, POS operations
     Permission.PRODUCT_READ,
     Permission.INVENTORY_READ,
     Permission.SALE_CREATE,
     Permission.SALE_READ,
+    Permission.INVOICE_READ,
+    Permission.INVOICE_SEND,
+    Permission.INVOICE_CONFIRM,
     Permission.REPORT_READ,
   ],
 };

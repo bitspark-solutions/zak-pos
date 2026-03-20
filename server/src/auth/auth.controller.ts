@@ -169,26 +169,37 @@ export class AuthController {
 
   private getUserPermissions(role: string): string[] {
     const rolePermissions = {
+      admin: [
+        'user:create', 'user:read', 'user:update', 'user:delete',
+        'tenant:create', 'tenant:manage',
+        'report:read', 'report:export',
+        'system:admin'
+      ],
       owner: [
         'user:create', 'user:read', 'user:update', 'user:delete',
         'product:create', 'product:read', 'product:update', 'product:delete',
         'inventory:create', 'inventory:read', 'inventory:update', 'inventory:delete',
         'sale:create', 'sale:read', 'sale:update', 'sale:delete',
+        'invoice:create', 'invoice:read', 'invoice:update', 'invoice:delete',
+        'invoice:send', 'invoice:confirm',
         'report:read', 'report:export',
-        'system:settings:update', 'tenant:manage', 'device:manage', 'session:manage'
+        'tenant:manage'
       ],
       manager: [
-        'user:read', 'user:update',
+        // Managers CANNOT create users
         'product:create', 'product:read', 'product:update', 'product:delete',
         'inventory:create', 'inventory:read', 'inventory:update', 'inventory:delete',
         'sale:create', 'sale:read', 'sale:update', 'sale:delete',
-        'report:read', 'report:export',
-        'device:manage', 'session:manage'
+        'invoice:create', 'invoice:read', 'invoice:update', 'invoice:delete',
+        'invoice:send', 'invoice:confirm',
+        'report:read'
       ],
       cashier: [
+        // Cashiers can only read products/inventory and create sales
         'product:read',
         'inventory:read',
         'sale:create', 'sale:read',
+        'invoice:read', 'invoice:send', 'invoice:confirm',
         'report:read'
       ]
     };

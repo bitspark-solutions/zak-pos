@@ -16,6 +16,12 @@ interface MenuItem {
 
 const menuItems: MenuItem[] = [
   {
+    label: 'Admin Dashboard',
+    href: ROUTES.ADMIN_DASHBOARD,
+    icon: '🏠',
+    roles: ['admin'],
+  },
+  {
     label: 'Dashboard',
     href: ROUTES.DASHBOARD,
     icon: '📊',

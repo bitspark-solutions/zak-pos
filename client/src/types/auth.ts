@@ -3,7 +3,7 @@ export interface User {
   email: string;
   name: string;
   phone?: string;
-  role: 'owner' | 'manager' | 'cashier';
+  role: 'admin' | 'owner' | 'manager' | 'cashier';
   tenantId: string;
   permissions: string[];
   createdAt?: string;
