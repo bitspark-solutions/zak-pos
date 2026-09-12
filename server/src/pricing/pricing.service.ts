@@ -54,7 +54,7 @@ export class PricingService {
       },
     });
 
-    const taxMap = new Map(taxes.map((t) => [t.id, t]));
+    const taxMap = new Map<string, any>(taxes.map((t) => [t.id, t]));
 
     let subtotal = 0;
     let totalDiscount = 0;

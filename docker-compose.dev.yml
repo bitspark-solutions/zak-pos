@@ -249,7 +249,7 @@ services:
 
   # PostgreSQL Admin (pgAdmin)
   pgadmin:
-    image: dpage/pgadmin4:latest
+    image: dpage/pgadmin4:9.1
     container_name: zakpos-pgadmin
     restart: unless-stopped
     environment:
@@ -274,7 +274,7 @@ services:
 
   # Redis Admin (RedisInsight)
   redis-insight:
-    image: redislabs/redisinsight:latest
+    image: redis/redisinsight:2.62.0
     container_name: zakpos-redis-insight
     restart: unless-stopped
     volumes:
@@ -293,7 +293,7 @@ services:
 
   # Kafka UI (for Kafka management)
   kafka-ui:
-    image: provectuslabs/kafka-ui:latest
+    image: provectuslabs/kafka-ui:v0.7.2
     container_name: zakpos-kafka-ui
     restart: unless-stopped
     environment:
@@ -316,7 +316,7 @@ services:
 
   # Mailhog (for email testing)
   mailhog:
-    image: mailhog/mailhog:latest
+    image: mailhog/mailhog:v1.0.1
     container_name: zakpos-mailhog
     restart: unless-stopped
     ports:
@@ -332,7 +332,7 @@ services:
 
   # File browser (for file management)
   nginx:
-    image: nginx:1.27-alpine3.21
+    image: nginx:1.27.4-alpine3.21
     container_name: zakpos-nginx
     restart: unless-stopped
     depends_on:
@@ -355,7 +355,7 @@ services:
           cpus: '0.1'
 
   filebrowser:
-    image: filebrowser/filebrowser:latest
+    image: filebrowser/filebrowser:v2.32.0
     container_name: zakpos-filebrowser
     restart: unless-stopped
     environment:

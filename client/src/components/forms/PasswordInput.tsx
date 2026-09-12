@@ -51,7 +51,8 @@ export const PasswordInput = forwardRef<HTMLInputElement, PasswordInputProps>(
 
     // const allRequirementsMet = requirements.every(req => req.met); // Reserved for future use
 
-    const { defaultValue, ...restProps } = props;
+    const restProps = { ...props };
+    delete restProps.defaultValue;
     const inputValue = typeof value === 'string' ? value : '';
 
     return (

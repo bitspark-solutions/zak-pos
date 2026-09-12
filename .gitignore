@@ -15,8 +15,11 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+/lib/
+/lib64/
+!client/src/lib/**
+!mobile-app/lib/**
+!mobile-app/patches/**
 parts/
 sdist/
 var/
@@ -279,4 +282,9 @@ Thumbs.db
 .env.example
 .env.prod
 node_modules
+
+# Ensure mobile-app vendor patches are fully tracked
+!mobile-app/patches/**
+!mobile-app/patches/**/*
+
 

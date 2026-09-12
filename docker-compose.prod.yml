@@ -248,7 +248,7 @@ services:
         BUILD_DATE: ${BUILD_DATE}
         VCS_REF: ${VCS_REF}
         VERSION: ${VERSION}
-    image: zakpos/api:${VERSION:-latest}
+    image: zakpos/api:${VERSION:-1.0.0}
     restart: always
     ports:
       - "39847:3000"
@@ -343,7 +343,7 @@ services:
         NEXT_PUBLIC_APP_ENV: production
         NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN}
         NEXT_PUBLIC_GOOGLE_ANALYTICS_ID: ${NEXT_PUBLIC_GOOGLE_ANALYTICS_ID}
-    image: zakpos/web:${VERSION:-latest}
+    image: zakpos/web:${VERSION:-1.0.0}
     restart: always
     ports:
       - "41923:3000"
@@ -402,7 +402,7 @@ services:
   # ---------------------------------------------------------------------------
 
   nginx:
-    image: nginx:1.27-alpine3.21
+    image: nginx:1.27.4-alpine3.21
     container_name: zakpos-nginx-prod
     restart: always
     volumes:
@@ -450,7 +450,7 @@ services:
   # ---------------------------------------------------------------------------
 
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.2.1
     container_name: zakpos-prometheus-prod
     restart: always
     ports:
@@ -481,7 +481,7 @@ services:
       - no-new-privileges:true
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:11.5.2
     container_name: zakpos-grafana-prod
     restart: always
     ports:

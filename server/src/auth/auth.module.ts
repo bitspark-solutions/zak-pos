@@ -19,7 +19,7 @@ import { DatabaseModule } from '../database/database.module';
     PassportModule,
     JwtModule.register({
       secret: process.env.JWT_SECRET || 'your-secret-key',
-      signOptions: { expiresIn: process.env.JWT_EXPIRES_IN || '7d' },
+      signOptions: { expiresIn: (process.env.JWT_EXPIRES_IN || '7d') as any },
     }),
   ],
   providers: [AuthService, Auth0Service, JwtStrategy, LocalStrategy, RolesGuard, PermissionsGuard, DeviceService],

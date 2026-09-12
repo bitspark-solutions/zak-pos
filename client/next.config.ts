@@ -4,9 +4,6 @@ const nextConfig: NextConfig = {
   // Enable standalone output for Docker optimization
   output: 'standalone',
 
-  // Disable telemetry
-  telemetry: false,
-
   // Image optimization
   images: {
     remotePatterns: [

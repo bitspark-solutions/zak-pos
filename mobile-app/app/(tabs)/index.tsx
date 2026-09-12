@@ -102,7 +102,7 @@ export default function DashboardScreen() {
 
   const canAccess = (permissions: string[]) => {
     if (!user) return false;
-    return permissions.some(perm => user.permissions.includes(perm));
+    return permissions.some(perm => user.permissions?.includes(perm) || false);
   };
 
   const dashboardCards: DashboardCard[] = [

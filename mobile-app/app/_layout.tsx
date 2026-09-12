@@ -31,7 +31,7 @@ function RootLayoutNav() {
       }
     } else {
       // Redirect to tabs if authenticated
-      if (inAuthGroup || (!inTabsGroup && segments.length === 0)) {
+      if (inAuthGroup || (!inTabsGroup && (segments as string[]).length === 0)) {
         router.replace('/(tabs)');
       }
     }

@@ -341,7 +341,7 @@ services:
 
   # Nginx Reverse Proxy
   nginx:
-    image: nginx:1.27-alpine3.21
+    image: nginx:1.27.4-alpine3.21
     container_name: zakpos-nginx
     restart: unless-stopped
     depends_on:
