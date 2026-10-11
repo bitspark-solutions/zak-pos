@@ -7,6 +7,8 @@ import {
   Request,
   Res,
   Query,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { Auth0Service } from './auth0.service';
@@ -14,11 +16,18 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { JwtService } from '@nestjs/jwt';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
+import { CurrentUser } from './decorators/current-user.decorator';
 import type { Response } from 'express';
 import { UsersService } from '../users/users.service';
 import { DatabaseService } from '../database/database.service';
 import { ROLE_PERMISSIONS, Role } from './enums/permissions.enum';
-import type { AuthenticatedRequest } from './interfaces/auth-user.interface';
+import type {
+  AuthenticatedRequest,
+  AuthUser,
+} from './interfaces/auth-user.interface';
 
 @Controller('auth')
 export class AuthController {
@@ -38,6 +47,30 @@ export class AuthController {
   @Post('register')
   async register(@Body() registerDto: RegisterDto) {
     return this.authService.register(registerDto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @Post('change-password')
+  async changePassword(
+    @CurrentUser() user: AuthUser,
+    @Request() req: AuthenticatedRequest,
+    @Body() changePasswordDto: ChangePasswordDto,
+  ) {
+    const token = (req.headers.authorization ?? '').replace(/^Bearer\s+/i, '');
+    return this.authService.changePassword(user.id, changePasswordDto, token);
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post('forgot-password')
+  async forgotPassword(@Body() forgotPasswordDto: ForgotPasswordDto) {
+    return this.authService.forgotPassword(forgotPasswordDto);
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post('reset-password')
+  async resetPassword(@Body() resetPasswordDto: ResetPasswordDto) {
+    return this.authService.resetPassword(resetPasswordDto);
   }
 
   @UseGuards(JwtAuthGuard)

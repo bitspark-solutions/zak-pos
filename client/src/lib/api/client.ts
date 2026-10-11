@@ -1,5 +1,6 @@
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
-import { API_BASE_URL, STORAGE_KEYS } from '@/lib/utils/constants';
+import { API_BASE_URL } from '@/lib/utils/constants';
+import { tokenStorage } from '@/lib/auth/storage';
 import { transformApiError, isNetworkError } from '@/lib/utils/errors';
 
 class ApiClient {
@@ -77,21 +78,13 @@ class ApiClient {
   }
 
   private getToken(): string | null {
-    if (typeof window === 'undefined') return null;
-
-    const rememberMe = localStorage.getItem(STORAGE_KEYS.REMEMBER_ME) === 'true';
-    const storage = rememberMe ? localStorage : sessionStorage;
-    return storage.getItem(STORAGE_KEYS.TOKEN);
+    // tokenStorage is the single source of truth and reads both sessionStorage
+    // (per-tab) and localStorage (remember-me) transparently.
+    return tokenStorage.getToken();
   }
 
   private clearAuthData(): void {
-    if (typeof window === 'undefined') return;
-
-    localStorage.removeItem(STORAGE_KEYS.TOKEN);
-    localStorage.removeItem(STORAGE_KEYS.USER);
-    localStorage.removeItem(STORAGE_KEYS.REMEMBER_ME);
-    sessionStorage.removeItem(STORAGE_KEYS.TOKEN);
-    sessionStorage.removeItem(STORAGE_KEYS.USER);
+    tokenStorage.clearAuthData();
   }
 
   get instance(): AxiosInstance {

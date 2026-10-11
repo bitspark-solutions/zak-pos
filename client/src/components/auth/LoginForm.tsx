@@ -9,6 +9,7 @@ import { loginSchema, LoginFormData } from '@/lib/validation/auth.schema';
 import { Input } from '@/components/forms/Input';
 import { Button } from '@/components/forms/Button';
 import { FormError } from '@/components/forms/FormError';
+import { AUTH0_LOGIN_URL } from '@/lib/utils/constants';
 import Link from 'next/link';
 import styles from './LoginForm.module.css';
 
@@ -16,6 +17,12 @@ export function LoginForm() {
   const { login, isLoading, error, clearError } = useAuth();
   const searchParams = useSearchParams();
   const [formError, setFormError] = useState<string | null>(null);
+
+  const handleAuth0Login = () => {
+    // Server 302s to Auth0 Universal Login; the callback redirects back to the
+    // client root with ?token=<jwt>, which AuthProvider consumes on landing.
+    window.location.assign(AUTH0_LOGIN_URL);
+  };
 
   const {
     register,
@@ -94,6 +101,20 @@ export function LoginForm() {
         disabled={isLoading}
       >
         Login
+      </Button>
+
+      <div className={styles.divider}>
+        <span className={styles.dividerText}>or</span>
+      </div>
+
+      <Button
+        type="button"
+        variant="secondary"
+        fullWidth
+        onClick={handleAuth0Login}
+        disabled={isLoading}
+      >
+        Login with Auth0
       </Button>
 
       <div className={styles.links}>

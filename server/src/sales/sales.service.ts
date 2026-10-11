@@ -45,6 +45,37 @@ interface SaleRecord {
   postedAt: Date | null;
 }
 
+/**
+ * The `sale_lines` rows this service reads for a refund (a Prisma `SaleLine`).
+ */
+interface SaleLineRecord {
+  id: string;
+  productId: string;
+  variantId: string | null;
+  qty: DecimalValue;
+  lineTotal: DecimalValue;
+}
+
+/**
+ * What a refund puts back on the shelf: the sale lines being returned with the
+ * quantity refunded per line.
+ */
+interface RestockItem {
+  productId: string;
+  variantId: string | null;
+  quantity: number;
+}
+
+/**
+ * A refund resolved into the fraction of the sale money returned and the
+ * quantities going back into stock. Computed once in `refund` and shared by
+ * the reversal journal and the physical restock so they never diverge.
+ */
+interface RefundScope {
+  ratio: number;
+  restock: RestockItem[];
+}
+
 @Injectable()
 export class SalesService {
   private readonly logger = new Logger(SalesService.name);
@@ -296,6 +327,186 @@ export class SalesService {
     }
   }
 
+  /**
+   * Reverses the journals `createSaleJournalEntries` posted for a sale:
+   * Dr Sales Revenue + Dr VAT Payable / Cr Cash, plus Dr Inventory / Cr COGS
+   * for the goods the refund puts back on the shelf.
+   *
+   * Amounts are proportional to what the refund actually returns: without
+   * `dto.lines` the full sale is reversed, with them only the refunded
+   * fraction of money and cost is booked.
+   */
+  private async createRefundJournalEntries(
+    tx: Prisma.TransactionClient,
+    sale: SaleRecord,
+    dto: RefundSaleDto,
+    scope: RefundScope,
+  ): Promise<void> {
+    const tenantId = sale.tenantId;
+    const accounts = await this.tenantService.seedAccounts(tx, tenantId);
+    const now = new Date();
+
+    const refundTotal = this.round2(Number(sale.total) * scope.ratio);
+    const refundVat = Math.min(
+      this.round2(Number(sale.tax) * scope.ratio),
+      refundTotal,
+    );
+    // Debits have to equal the cash paid out, so the revenue reversal absorbs
+    // whatever rounding the net/VAT split leaves behind.
+    const refundRevenue = this.round2(refundTotal - refundVat);
+
+    // Revenue reversal: Dr Sales Revenue + Dr VAT Payable / Cr Cash
+    const journal = await tx.journal.create({
+      data: {
+        tenantId,
+        date: now,
+        description: `Refund ${sale.id}`,
+        source: 'REFUND',
+        referenceType: 'sale',
+        referenceId: sale.id,
+        createdBy: sale.cashierId,
+        status: 'posted',
+      },
+    });
+
+    if (refundRevenue > 0) {
+      await tx.journalLine.create({
+        data: {
+          journalId: journal.id,
+          accountId: accounts.get('4000')!,
+          debit: refundRevenue,
+          credit: 0,
+          memo: `Refund reason: ${dto.reason}`,
+        },
+      });
+    }
+
+    if (refundVat > 0) {
+      await tx.journalLine.create({
+        data: {
+          journalId: journal.id,
+          accountId: accounts.get('2200')!,
+          debit: refundVat,
+          credit: 0,
+        },
+      });
+    }
+
+    await tx.journalLine.create({
+      data: {
+        journalId: journal.id,
+        accountId: accounts.get('1000')!,
+        debit: 0,
+        credit: refundTotal,
+        memo: `Refund method: ${dto.refundMethod}`,
+      },
+    });
+
+    // Restock reversal: Dr Inventory / Cr COGS at weighted-average cost
+    let restockCost = 0;
+    for (const item of scope.restock) {
+      const inventory = await tx.inventory.findFirst({
+        where: {
+          shopId: sale.shopId,
+          productId: item.productId,
+          variantId: item.variantId,
+          product: { tenantId },
+        },
+      });
+
+      if (inventory) {
+        restockCost += item.quantity * Number(inventory.avgCost);
+      } else {
+        this.logger.warn(
+          `No inventory record for product ${item.productId} in shop ${sale.shopId}; refund restock cost excludes this line`,
+        );
+      }
+    }
+    restockCost = this.round2(restockCost);
+
+    if (restockCost > 0) {
+      const restockJournal = await tx.journal.create({
+        data: {
+          tenantId,
+          date: now,
+          description: `Restock for Refund ${sale.id}`,
+          source: 'REFUND',
+          referenceType: 'sale',
+          referenceId: sale.id,
+          createdBy: sale.cashierId,
+          status: 'posted',
+        },
+      });
+
+      await tx.journalLine.create({
+        data: {
+          journalId: restockJournal.id,
+          accountId: accounts.get('1500')!,
+          debit: restockCost,
+          credit: 0,
+        },
+      });
+
+      await tx.journalLine.create({
+        data: {
+          journalId: restockJournal.id,
+          accountId: accounts.get('5000')!,
+          debit: 0,
+          credit: restockCost,
+        },
+      });
+    }
+  }
+
+  /**
+   * Resolves a refund into the fraction of the sale money returned and the
+   * quantities going back into stock.
+   */
+  private getRefundScope(
+    saleTotal: number,
+    saleLines: SaleLineRecord[],
+    requestedLines?: { lineId: string; qty: number }[],
+  ): RefundScope {
+    if (!requestedLines || requestedLines.length === 0) {
+      return {
+        ratio: 1,
+        restock: saleLines.map((line) => ({
+          productId: line.productId,
+          variantId: line.variantId,
+          quantity: Number(line.qty),
+        })),
+      };
+    }
+
+    const linesById = new Map(saleLines.map((line) => [line.id, line]));
+    const restock: RestockItem[] = [];
+    let refundedAmount = 0;
+
+    for (const requested of requestedLines) {
+      const line = linesById.get(requested.lineId);
+      if (!line) {
+        throw new BadRequestException(
+          `Sale line ${requested.lineId} does not belong to this sale`,
+        );
+      }
+
+      const quantity = Math.min(requested.qty, Number(line.qty));
+      if (quantity <= 0) continue;
+
+      refundedAmount += (Number(line.lineTotal) * quantity) / Number(line.qty);
+      restock.push({
+        productId: line.productId,
+        variantId: line.variantId,
+        quantity,
+      });
+    }
+
+    const ratio =
+      saleTotal > 0 ? Math.min(this.round2(refundedAmount / saleTotal), 1) : 1;
+
+    return { ratio, restock };
+  }
+
   async findAll(tenantId: string, shopId?: string): Promise<ISale[]> {
     const where: Prisma.SaleWhereInput = { tenantId };
     if (shopId) where.shopId = shopId;
@@ -403,6 +614,32 @@ export class SalesService {
           paymentStatus: 'refunded',
         },
       });
+
+      // Resolve the refund (money returned + quantities coming back) once, so
+      // the reversal journal and the physical restock use the exact same scope.
+      const saleLines = await tx.saleLine.findMany({
+        where: { saleId: sale.id },
+      });
+      const scope = this.getRefundScope(
+        Number(sale.total),
+        saleLines,
+        dto.lines,
+      );
+
+      // Reverse the journals the sale posted (same tenant-scoped transaction)
+      await this.createRefundJournalEntries(tx, sale, dto, scope);
+
+      // Put the refunded quantities back on the shelf and record IN movements
+      // (same transaction; missing inventory rows are skipped with a warning,
+      // matching the cost-exclusion the refund journal already applies).
+      await this.inventoryService.restoreStock(
+        sale.shopId,
+        scope.restock,
+        'REFUND',
+        sale.id,
+        tenantId,
+        tx,
+      );
 
       return this.mapToSale(updatedSale);
     });

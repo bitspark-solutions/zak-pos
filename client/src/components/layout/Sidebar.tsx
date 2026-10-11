@@ -34,6 +34,13 @@ const menuItems: MenuItem[] = [
     roles: ['cashier', 'manager', 'owner'],
   },
   {
+    label: 'Admin',
+    href: ROUTES.ADMIN,
+    icon: '🛠️',
+    roles: ['owner', 'manager'],
+    permissions: ['user:read'],
+  },
+  {
     label: 'Products',
     href: '/products',
     icon: '📦',

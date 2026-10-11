@@ -76,7 +76,7 @@ export class Auth0Service {
 
   getLogoutUrl(): string {
     const params = new URLSearchParams({
-      returnTo: `${auth0Config.baseURL}${auth0Config.routes.postLogoutRedirect}`,
+      returnTo: process.env.FRONTEND_URL || 'http://localhost:41923',
       client_id: auth0Config.clientId,
     });
 

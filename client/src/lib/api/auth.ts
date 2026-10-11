@@ -1,8 +1,7 @@
 import axios from 'axios';
 import { User, LoginData, RegisterData, AuthResponse, InvitationTokenData } from '@/types/auth';
 import { tokenStorage } from '@/lib/auth/storage';
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1';
+import { API_BASE_URL } from '@/lib/utils/constants';
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -31,7 +30,7 @@ export const authApi = {
   },
 
   async getProfile(): Promise<User> {
-    const res = await apiClient.get<User>('/auth/me');
+    const res = await apiClient.get<User>('/auth/profile');
     return res.data;
   },
 

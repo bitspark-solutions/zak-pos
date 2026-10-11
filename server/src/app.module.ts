@@ -13,6 +13,9 @@ import { InventoryModule } from './inventory/inventory.module';
 import { CartModule } from './cart/cart.module';
 import { SalesModule } from './sales/sales.module';
 import { InvoiceModule } from './invoice/invoice.module';
+import { InvitationsModule } from './invitations/invitations.module';
+import { ShopsModule } from './shops/shops.module';
+import { TenantSettingsModule } from './tenant-settings/tenant-settings.module';
 
 @Module({
   imports: [
@@ -26,6 +29,9 @@ import { InvoiceModule } from './invoice/invoice.module';
     CartModule,
     SalesModule,
     InvoiceModule,
+    InvitationsModule,
+    ShopsModule,
+    TenantSettingsModule,
   ],
   controllers: [AppController, HealthController],
   providers: [AppService],

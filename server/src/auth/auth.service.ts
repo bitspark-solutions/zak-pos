@@ -1,3 +1,4 @@
+import { randomInt } from 'crypto';
 import {
   Injectable,
   UnauthorizedException,
@@ -11,9 +12,16 @@ import { UsersService } from '../users/users.service';
 import { Auth0Service, Auth0UserInfo } from './auth0.service';
 import { DatabaseService } from '../database/database.service';
 import { TenantService } from './tenant.service';
+import { SessionService } from './session.service';
+import { RedisService } from '../redis/redis.service';
+import { InvitationsService } from '../invitations/invitations.service';
+import type { InvitationRecord } from '../invitations/interfaces/invitation.interface';
 import { ROLE_PERMISSIONS, Role } from './enums/permissions.enum';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 
 interface Auth0Result {
   userInfo: Auth0UserInfo;
@@ -43,6 +51,39 @@ interface AuthenticatedUser {
   auth0Id?: string;
 }
 
+/** One row returned by the admin client for password operations. */
+interface PasswordUserRow {
+  id: string;
+  email: string;
+  password?: string | null;
+  externalId?: string | null;
+}
+
+/** Redis record stored under `pwdreset:<email>` by forgot-password. */
+interface PasswordResetRecord {
+  codeHash: string;
+  attempts: number;
+}
+
+export interface PasswordUpdateResult {
+  message: string;
+  /** False when the local DB was updated but the Auth0 mirror call failed. */
+  auth0Synced: boolean;
+  auth0SyncError?: string;
+}
+
+export interface ForgotPasswordResult {
+  message: string;
+  /** Only present when NODE_ENV=development so E2E tests can consume the code. */
+  devCode?: string;
+}
+
+const BCRYPT_SALT_ROUNDS = 10;
+const PASSWORD_RESET_TTL_SECONDS = 30 * 60;
+const PASSWORD_RESET_MAX_ATTEMPTS = 5;
+const PASSWORD_RESET_GENERIC_MESSAGE =
+  'If an account exists for this email, a password reset code has been sent.';
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -53,6 +94,9 @@ export class AuthService {
     private auth0Service: Auth0Service,
     private databaseService: DatabaseService,
     private tenantService: TenantService,
+    private sessionService: SessionService,
+    private redis: RedisService,
+    private invitationsService: InvitationsService,
   ) {}
 
   private isAuth0Result(result: unknown): result is Auth0Result {
@@ -204,6 +248,22 @@ export class AuthService {
       throw new BadRequestException('Email, password, and name are required');
     }
 
+    // Step 1b: Resolve the invitation token up front. An invalid/expired
+    // token is a hard error — invited registrations must never silently
+    // fall back to self-provisioning a new tenant.
+    let invitation: InvitationRecord | null = null;
+    if (registerDto.inviteToken) {
+      invitation = await this.invitationsService.findValid(
+        registerDto.inviteToken,
+      );
+      if (!invitation) {
+        throw new BadRequestException('Invalid or expired invitation token');
+      }
+      if (invitation.email.toLowerCase() !== registerDto.email.toLowerCase()) {
+        throw new BadRequestException('Email does not match the invitation');
+      }
+    }
+
     // Step 2: Check if user already exists in local database
     const existingUser = await this.usersService.findByEmail(registerDto.email);
     if (existingUser) {
@@ -211,15 +271,24 @@ export class AuthService {
     }
 
     // Determine default role:
-    // - If tenantId is provided (invited registration), use provided role or default to 'cashier'
+    // - Invited registration: the invitation's role is authoritative
+    // - If tenantId is provided (legacy staff join), use provided role or default to 'cashier'
     // - If no tenantId (public registration), default to 'owner' (business owner registration)
     const defaultRole = registerDto.tenantId ? 'cashier' : 'owner';
-    const userRole = registerDto.role || defaultRole;
+    const userRole = invitation
+      ? invitation.role
+      : registerDto.role || defaultRole;
 
     // Step 3: Resolve the tenant (real provisioning, no fallback IDs).
     // Owner self-registration creates tenant + first shop + chart of accounts;
     // staff joining an existing tenant is validated against the DB.
-    if (registerDto.tenantId && registerDto.role === 'owner') {
+    // An invitation always joins the inviter's tenant — no new tenant is
+    // provisioned, and registerDto.tenantId is ignored in that path.
+    if (
+      !invitation &&
+      registerDto.tenantId &&
+      registerDto.role === Role.OWNER
+    ) {
       throw new BadRequestException(
         'Owners provision their own store; remove tenantId to create a new one',
       );
@@ -227,7 +296,19 @@ export class AuthService {
 
     let tenantId: string;
     let shopId: string | undefined;
-    if (!registerDto.tenantId) {
+    if (invitation) {
+      try {
+        const ensured = await this.tenantService.ensureTenant(
+          invitation.tenantId,
+        );
+        tenantId = ensured.tenantId;
+        shopId = invitation.shopId ?? ensured.shopId ?? undefined;
+      } catch {
+        throw new BadRequestException(
+          `The workspace behind this invitation no longer exists (${invitation.tenantId})`,
+        );
+      }
+    } else if (!registerDto.tenantId) {
       const store = await this.tenantService.provisionStore(
         registerDto.name,
         registerDto.storeName,
@@ -303,6 +384,12 @@ export class AuthService {
       tenantId,
     )) as UserWithPassword;
 
+    // Step 5b: The invitation is single-use; only consumed once the user row
+    // exists, so a failed registration leaves the token reusable.
+    if (invitation) {
+      await this.invitationsService.consume(invitation.token);
+    }
+
     // Step 6: Generate JWT with full context
     const permissions = this.getUserPermissions(localUser.role);
     const payload = {
@@ -334,6 +421,205 @@ export class AuthService {
     } catch {
       throw new UnauthorizedException('Invalid token');
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // Self-service password flows. Users live in BOTH the local DB (bcrypt hash,
+  // used by the API login fallback) and Auth0 (credential authority for
+  // Universal Login), so every password write must hit both stores. A DB write
+  // failure always throws; an Auth0 mirror failure is surfaced via the
+  // auth0Synced flag + error message instead of silently swallowing it.
+  // -------------------------------------------------------------------------
+
+  async changePassword(
+    userId: string,
+    changePasswordDto: ChangePasswordDto,
+    currentToken: string,
+  ): Promise<PasswordUpdateResult> {
+    // Admin client (RLS-bypassing) is the sanctioned path for auth flows,
+    // same as login/registration.
+    const { prisma } = this.databaseService.getPrisma();
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+
+    if (!user?.password || user.password === 'auth0-managed') {
+      throw new UnauthorizedException('Current password is incorrect');
+    }
+    const currentMatches = await bcrypt.compare(
+      changePasswordDto.currentPassword,
+      user.password,
+    );
+    if (!currentMatches) {
+      throw new UnauthorizedException('Current password is incorrect');
+    }
+
+    const result = await this.applyNewPassword(
+      user,
+      changePasswordDto.newPassword,
+      'Password changed successfully',
+    );
+
+    await this.invalidateOtherSessions(userId, currentToken);
+
+    return result;
+  }
+
+  async forgotPassword(
+    forgotPasswordDto: ForgotPasswordDto,
+  ): Promise<ForgotPasswordResult> {
+    const email = forgotPasswordDto.email;
+    // Same admin-path lookup login uses: forgot-password runs before any
+    // tenant context exists. Never reveal whether the account exists.
+    const user = await this.usersService.findByEmail(email);
+
+    if (!user) {
+      return { message: PASSWORD_RESET_GENERIC_MESSAGE };
+    }
+
+    const code = randomInt(0, 1_000_000).toString().padStart(6, '0');
+    const codeHash = await bcrypt.hash(code, BCRYPT_SALT_ROUNDS);
+    await this.redis.setJson(
+      this.resetKey(email),
+      { codeHash, attempts: 0 } satisfies PasswordResetRecord,
+      PASSWORD_RESET_TTL_SECONDS,
+    );
+
+    // No email transport is wired up yet; the dev-only echo lets E2E tests
+    // complete the reset flow without a mail provider.
+    if (process.env.NODE_ENV === 'development') {
+      return {
+        message: PASSWORD_RESET_GENERIC_MESSAGE,
+        devCode: code,
+      };
+    }
+    return { message: PASSWORD_RESET_GENERIC_MESSAGE };
+  }
+
+  async resetPassword(
+    resetPasswordDto: ResetPasswordDto,
+  ): Promise<PasswordUpdateResult> {
+    const { email, code, newPassword } = resetPasswordDto;
+    const key = this.resetKey(email);
+    const record = await this.redis.getJson<PasswordResetRecord>(key);
+
+    if (!record?.codeHash) {
+      throw new BadRequestException('Invalid or expired reset code');
+    }
+
+    const codeMatches = await bcrypt.compare(code, record.codeHash);
+    if (!codeMatches) {
+      await this.registerFailedAttempt(key, record);
+      throw new BadRequestException('Invalid or expired reset code');
+    }
+
+    const user = await this.usersService.findByEmail(email);
+    if (!user) {
+      await this.redis.del(key);
+      throw new BadRequestException('Invalid or expired reset code');
+    }
+
+    const result = await this.applyNewPassword(
+      user,
+      newPassword,
+      'Password reset successfully',
+    );
+
+    await this.redis.del(key);
+    return result;
+  }
+
+  /**
+   * Write the new bcrypt hash to the local DB (throw on failure), then mirror
+   * to Auth0 when the row carries an externalId. Auth0 failures do not roll
+   * back the DB or throw; they are logged and reported via auth0Synced=false.
+   */
+  private async applyNewPassword(
+    user: PasswordUserRow,
+    newPassword: string,
+    message: string,
+  ): Promise<PasswordUpdateResult> {
+    const passwordHash = await bcrypt.hash(newPassword, BCRYPT_SALT_ROUNDS);
+    const { prisma } = this.databaseService.getPrisma();
+    try {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { password: passwordHash },
+      });
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      throw new BadRequestException(
+        `Failed to update password in the local store: ${errorMessage}`,
+      );
+    }
+
+    if (!user.externalId) {
+      // Local-only account: nothing to mirror, the DB update completed the job.
+      return { message, auth0Synced: true };
+    }
+
+    try {
+      await this.auth0Service.updateUser(user.externalId, {
+        password: newPassword,
+      });
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `Password updated in DB for ${user.email} but Auth0 sync failed: ${errorMessage}`,
+      );
+      return { message, auth0Synced: false, auth0SyncError: errorMessage };
+    }
+
+    return { message, auth0Synced: true };
+  }
+
+  private async registerFailedAttempt(
+    key: string,
+    record: PasswordResetRecord,
+  ): Promise<void> {
+    const attempts = record.attempts + 1;
+    if (attempts >= PASSWORD_RESET_MAX_ATTEMPTS) {
+      await this.redis.del(key);
+      return;
+    }
+    const remainingTtl = await this.redis.ttl(key);
+    await this.redis.setJson(
+      key,
+      { codeHash: record.codeHash, attempts } satisfies PasswordResetRecord,
+      remainingTtl > 0 ? remainingTtl : undefined,
+    );
+  }
+
+  /**
+   * Revoke every active session of the user except the one carrying the
+   * current bearer token. SessionService exposes no revokeAllForUser, so this
+   * iterates the active sessions; failures are logged and skipped (the
+   * password itself is already rotated in both stores).
+   */
+  private async invalidateOtherSessions(
+    userId: string,
+    currentToken: string,
+  ): Promise<void> {
+    try {
+      const sessions =
+        await this.sessionService.getActiveSessionsByUser(userId);
+      for (const session of sessions) {
+        if (session.token === currentToken) {
+          continue;
+        }
+        await this.sessionService.revokeSession(session.id);
+      }
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `Session invalidation skipped for user ${userId}: ${errorMessage}`,
+      );
+    }
+  }
+
+  private resetKey(email: string): string {
+    return `pwdreset:${email}`;
   }
 
   private getUserPermissions(role: string): string[] {

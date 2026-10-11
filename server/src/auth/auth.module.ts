@@ -13,11 +13,13 @@ import { SessionService } from './session.service';
 import { TenantService } from './tenant.service';
 import { UsersModule } from '../users/users.module';
 import { DatabaseModule } from '../database/database.module';
+import { InvitationsModule } from '../invitations/invitations.module';
 
 @Module({
   imports: [
     UsersModule,
     DatabaseModule,
+    InvitationsModule,
     PassportModule,
     JwtModule.register({
       secret: process.env.JWT_SECRET || 'your-secret-key',

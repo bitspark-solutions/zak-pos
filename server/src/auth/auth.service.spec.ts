@@ -1,10 +1,15 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
+import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { UsersService } from '../users/users.service';
 import { Auth0Service } from './auth0.service';
 import { DatabaseService } from '../database/database.service';
 import { TenantService } from './tenant.service';
+import { SessionService } from './session.service';
+import { RedisService } from '../redis/redis.service';
+import { InvitationsService } from '../invitations/invitations.service';
+import type { InvitationRecord } from '../invitations/interfaces/invitation.interface';
 import * as bcrypt from 'bcryptjs';
 
 describe('AuthService', () => {
@@ -33,6 +38,7 @@ describe('AuthService', () => {
 
   const mockPrisma = {
     user: {
+      findUnique: jest.fn(),
       update: jest.fn().mockResolvedValue(undefined),
     },
   };
@@ -58,6 +64,24 @@ describe('AuthService', () => {
     seedAccounts: jest.fn(),
   };
 
+  const mockSessionService = {
+    getActiveSessionsByUser: jest.fn().mockResolvedValue([]),
+    revokeSession: jest.fn().mockResolvedValue(true),
+  };
+
+  const mockRedisService = {
+    getJson: jest.fn(),
+    setJson: jest.fn().mockResolvedValue(undefined),
+    ttl: jest.fn().mockResolvedValue(1500),
+    del: jest.fn().mockResolvedValue(undefined),
+  };
+
+  const mockInvitationsService = {
+    findValid: jest.fn(),
+    consume: jest.fn().mockResolvedValue(undefined),
+    verify: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -81,6 +105,18 @@ describe('AuthService', () => {
         {
           provide: TenantService,
           useValue: mockTenantService,
+        },
+        {
+          provide: SessionService,
+          useValue: mockSessionService,
+        },
+        {
+          provide: RedisService,
+          useValue: mockRedisService,
+        },
+        {
+          provide: InvitationsService,
+          useValue: mockInvitationsService,
         },
       ],
     }).compile();
@@ -426,6 +462,183 @@ describe('AuthService', () => {
         await bcrypt.compare(registerDto.password, createCall.password),
       ).toBe(true);
     });
+
+    it('should ignore invitation-less registrations without touching InvitationsService', async () => {
+      const registerDto = {
+        email: 'plain@example.com',
+        password: 'password123',
+        name: 'Plain User',
+      };
+
+      mockUsersService.findByEmail.mockResolvedValue(null);
+      mockTenantService.provisionStore.mockResolvedValue({
+        tenantId: 'tenant-new',
+        shopId: 'shop-new',
+        tenantName: 'Plain Store',
+      });
+      mockAuth0Service.createUser.mockResolvedValue({
+        auth0Id: 'auth0|plain',
+      });
+      mockUsersService.create.mockResolvedValue({
+        id: '9',
+        email: registerDto.email,
+        name: registerDto.name,
+        role: 'owner',
+        tenantId: 'tenant-new',
+      });
+      mockJwtService.sign.mockReturnValue('mock-token');
+
+      await service.register(registerDto);
+
+      expect(mockInvitationsService.findValid).not.toHaveBeenCalled();
+      expect(mockInvitationsService.consume).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('register with an invitation token', () => {
+    const invitation: InvitationRecord = {
+      token: 'a'.repeat(32),
+      tenantId: 'tenant-9',
+      tenantName: 'Acme Mart',
+      email: 'invited@example.com',
+      role: 'manager',
+      shopId: 'shop-9',
+      invitedBy: 'user-1',
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+    };
+
+    const baseDto = {
+      email: 'invited@example.com',
+      password: 'password123',
+      name: 'Invited Manager',
+      inviteToken: invitation.token,
+    };
+
+    function stubSuccessfulCreation() {
+      mockUsersService.findByEmail.mockResolvedValue(null);
+      mockTenantService.ensureTenant.mockResolvedValue({
+        tenantId: 'tenant-9',
+        shopId: 'shop-ensured',
+      });
+      mockAuth0Service.createUser.mockResolvedValue({
+        auth0Id: 'auth0|invited',
+      });
+      mockUsersService.create.mockResolvedValue({
+        id: '10',
+        email: baseDto.email,
+        name: baseDto.name,
+        role: invitation.role,
+        tenantId: 'tenant-9',
+      });
+      mockJwtService.sign.mockReturnValue('mock-token');
+    }
+
+    it('joins the inviter tenant with the invitation role and consumes the token', async () => {
+      mockInvitationsService.findValid.mockResolvedValue(invitation);
+      stubSuccessfulCreation();
+
+      // role in the body must NOT win over the invitation's role
+      const result = await service.register({ ...baseDto, role: 'cashier' });
+
+      expect(mockInvitationsService.findValid).toHaveBeenCalledWith(
+        invitation.token,
+      );
+      expect(mockTenantService.provisionStore).not.toHaveBeenCalled();
+      expect(mockTenantService.ensureTenant).toHaveBeenCalledWith('tenant-9');
+      expect(mockAuth0Service.createUser).toHaveBeenCalledWith(
+        expect.objectContaining({
+          email: baseDto.email,
+          role: 'manager',
+          tenantId: 'tenant-9',
+        }),
+      );
+      expect(mockUsersService.create).toHaveBeenCalledWith(
+        expect.objectContaining({ role: 'manager' }),
+        'tenant-9',
+      );
+      const createCall = mockUsersService.create.mock.calls[0][0];
+      expect(await bcrypt.compare(baseDto.password, createCall.password)).toBe(
+        true,
+      );
+      expect(mockInvitationsService.consume).toHaveBeenCalledWith(
+        invitation.token,
+      );
+      expect(result.user).toEqual(
+        expect.objectContaining({
+          role: 'manager',
+          tenantId: 'tenant-9',
+          shopId: 'shop-9',
+        }),
+      );
+    });
+
+    it('falls back to the ensured shop when the invitation carries none', async () => {
+      mockInvitationsService.findValid.mockResolvedValue({
+        ...invitation,
+        shopId: null,
+      });
+      stubSuccessfulCreation();
+
+      const result = await service.register(baseDto);
+
+      expect(result.user.shopId).toBe('shop-ensured');
+    });
+
+    it('rejects when the register email does not match the invitation email', async () => {
+      mockInvitationsService.findValid.mockResolvedValue(invitation);
+
+      await expect(
+        service.register({
+          ...baseDto,
+          email: 'someone-else@example.com',
+        }),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(mockUsersService.create).not.toHaveBeenCalled();
+      expect(mockAuth0Service.createUser).not.toHaveBeenCalled();
+      expect(mockInvitationsService.consume).not.toHaveBeenCalled();
+    });
+
+    it('accepts an email that differs only by case', async () => {
+      mockInvitationsService.findValid.mockResolvedValue(invitation);
+      stubSuccessfulCreation();
+
+      await service.register({
+        ...baseDto,
+        email: 'Invited@Example.COM',
+      });
+
+      expect(mockUsersService.create).toHaveBeenCalled();
+      expect(mockInvitationsService.consume).toHaveBeenCalled();
+    });
+
+    it('rejects an invalid/expired token instead of falling back to self-provisioning', async () => {
+      mockInvitationsService.findValid.mockResolvedValue(null);
+
+      await expect(service.register(baseDto)).rejects.toThrow(
+        'Invalid or expired invitation token',
+      );
+
+      expect(mockTenantService.provisionStore).not.toHaveBeenCalled();
+      expect(mockTenantService.ensureTenant).not.toHaveBeenCalled();
+      expect(mockUsersService.create).not.toHaveBeenCalled();
+      expect(mockAuth0Service.createUser).not.toHaveBeenCalled();
+    });
+
+    it('rejects when the invitation tenant no longer exists and does not consume the token', async () => {
+      mockInvitationsService.findValid.mockResolvedValue(invitation);
+      mockUsersService.findByEmail.mockResolvedValue(null);
+      mockTenantService.ensureTenant.mockRejectedValue(
+        new Error('Tenant tenant-9 does not exist'),
+      );
+
+      await expect(service.register(baseDto)).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(mockInvitationsService.consume).not.toHaveBeenCalled();
+      expect(mockUsersService.create).not.toHaveBeenCalled();
+    });
   });
 
   describe('validateToken', () => {
@@ -456,6 +669,336 @@ describe('AuthService', () => {
       await expect(service.validateToken(invalidToken)).rejects.toThrow(
         'Invalid token',
       );
+    });
+  });
+
+  describe('changePassword', () => {
+    const currentPassword = 'current-pass-1';
+    let storedHash: string;
+
+    beforeEach(async () => {
+      storedHash = await bcrypt.hash(currentPassword, 10);
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: '1',
+        email: 'test@example.com',
+        password: storedHash,
+        externalId: 'auth0|123456789',
+      });
+      mockPrisma.user.update.mockResolvedValue(undefined);
+      mockAuth0Service.updateUser.mockResolvedValue(null);
+      mockSessionService.getActiveSessionsByUser.mockResolvedValue([]);
+    });
+
+    it('should throw UnauthorizedException when current password is wrong', async () => {
+      await expect(
+        service.changePassword(
+          '1',
+          { currentPassword: 'totally-wrong', newPassword: 'brand-new-1' },
+          'bearer-token',
+        ),
+      ).rejects.toThrow(UnauthorizedException);
+
+      expect(mockPrisma.user.update).not.toHaveBeenCalled();
+      expect(mockAuth0Service.updateUser).not.toHaveBeenCalled();
+    });
+
+    it('should throw when the row has no usable local hash (Auth0-managed only)', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: '1',
+        email: 'test@example.com',
+        password: 'auth0-managed',
+        externalId: 'auth0|123456789',
+      });
+
+      await expect(
+        service.changePassword(
+          '1',
+          { currentPassword, newPassword: 'brand-new-1' },
+          'bearer-token',
+        ),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should update DB bcrypt hash and Auth0 user when externalId exists', async () => {
+      const result = await service.changePassword(
+        '1',
+        { currentPassword, newPassword: 'brand-new-1' },
+        'bearer-token',
+      );
+
+      expect(result).toEqual({
+        message: 'Password changed successfully',
+        auth0Synced: true,
+      });
+      const updateCall = mockPrisma.user.update.mock.calls[0][0];
+      expect(updateCall.where).toEqual({ id: '1' });
+      expect(
+        await bcrypt.compare('brand-new-1', updateCall.data.password),
+      ).toBe(true);
+      expect(mockAuth0Service.updateUser).toHaveBeenCalledWith(
+        'auth0|123456789',
+        {
+          password: 'brand-new-1',
+        },
+      );
+    });
+
+    it('should skip Auth0 for local-only users', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: '1',
+        email: 'test@example.com',
+        password: storedHash,
+        externalId: null,
+      });
+
+      const result = await service.changePassword(
+        '1',
+        { currentPassword, newPassword: 'brand-new-1' },
+        'bearer-token',
+      );
+
+      expect(result.auth0Synced).toBe(true);
+      expect(mockAuth0Service.updateUser).not.toHaveBeenCalled();
+    });
+
+    it('should report auth0Synced=false instead of throwing when Auth0 mirror fails', async () => {
+      mockAuth0Service.updateUser.mockRejectedValue(
+        new Error('management token expired'),
+      );
+
+      const result = await service.changePassword(
+        '1',
+        { currentPassword, newPassword: 'brand-new-1' },
+        'bearer-token',
+      );
+
+      expect(result).toEqual({
+        message: 'Password changed successfully',
+        auth0Synced: false,
+        auth0SyncError: 'management token expired',
+      });
+      // DB write still happened
+      expect(mockPrisma.user.update).toHaveBeenCalled();
+    });
+
+    it('should throw when the DB update fails and never touch Auth0', async () => {
+      mockPrisma.user.update.mockRejectedValueOnce(new Error('db down'));
+
+      await expect(
+        service.changePassword(
+          '1',
+          { currentPassword, newPassword: 'brand-new-1' },
+          'bearer-token',
+        ),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(mockAuth0Service.updateUser).not.toHaveBeenCalled();
+    });
+
+    it('should revoke other sessions but keep the current one', async () => {
+      mockSessionService.getActiveSessionsByUser.mockResolvedValue([
+        { id: 'sess-current', token: 'bearer-token' },
+        { id: 'sess-other', token: 'stale-token' },
+      ]);
+
+      await service.changePassword(
+        '1',
+        { currentPassword, newPassword: 'brand-new-1' },
+        'bearer-token',
+      );
+
+      expect(mockSessionService.getActiveSessionsByUser).toHaveBeenCalledWith(
+        '1',
+      );
+      expect(mockSessionService.revokeSession).toHaveBeenCalledWith(
+        'sess-other',
+      );
+      expect(mockSessionService.revokeSession).not.toHaveBeenCalledWith(
+        'sess-current',
+      );
+    });
+
+    it('should not fail the request when session lookup blows up', async () => {
+      mockSessionService.getActiveSessionsByUser.mockRejectedValue(
+        new Error('redis offline'),
+      );
+
+      await expect(
+        service.changePassword(
+          '1',
+          { currentPassword, newPassword: 'brand-new-1' },
+          'bearer-token',
+        ),
+      ).resolves.toMatchObject({ auth0Synced: true });
+    });
+  });
+
+  describe('forgotPassword', () => {
+    const originalNodeEnv = process.env.NODE_ENV;
+
+    afterEach(() => {
+      process.env.NODE_ENV = originalNodeEnv;
+    });
+
+    it('should return the generic message and store nothing for unknown emails', async () => {
+      mockUsersService.findByEmail.mockResolvedValue(null);
+
+      const result = await service.forgotPassword({
+        email: 'ghost@example.com',
+      });
+
+      expect(result).toEqual({
+        message:
+          'If an account exists for this email, a password reset code has been sent.',
+      });
+      expect(result.devCode).toBeUndefined();
+      expect(mockRedisService.setJson).not.toHaveBeenCalled();
+    });
+
+    it('should store a hashed 6-digit code with 30min TTL and echo devCode only in development', async () => {
+      process.env.NODE_ENV = 'development';
+      mockUsersService.findByEmail.mockResolvedValue(mockUser);
+
+      const result = await service.forgotPassword({
+        email: 'test@example.com',
+      });
+
+      expect(result.devCode).toMatch(/^\d{6}$/);
+      expect(mockRedisService.setJson).toHaveBeenCalledWith(
+        'pwdreset:test@example.com',
+        expect.objectContaining({ attempts: 0 }),
+        30 * 60,
+      );
+      const stored = mockRedisService.setJson.mock.calls[0][1] as {
+        codeHash: string;
+      };
+      expect(
+        await bcrypt.compare(result.devCode as string, stored.codeHash),
+      ).toBe(true);
+    });
+
+    it('should not leak devCode outside development', async () => {
+      process.env.NODE_ENV = 'production';
+      mockUsersService.findByEmail.mockResolvedValue(mockUser);
+
+      const result = await service.forgotPassword({
+        email: 'test@example.com',
+      });
+
+      expect(result.devCode).toBeUndefined();
+      expect(mockRedisService.setJson).toHaveBeenCalled();
+    });
+  });
+
+  describe('resetPassword', () => {
+    const validCode = '246810';
+    let codeHash: string;
+
+    beforeEach(async () => {
+      codeHash = await bcrypt.hash(validCode, 10);
+      mockUsersService.findByEmail.mockResolvedValue({
+        ...mockUser,
+        externalId: 'auth0|123456789',
+      });
+      mockPrisma.user.update.mockResolvedValue(undefined);
+      mockAuth0Service.updateUser.mockResolvedValue(null);
+    });
+
+    it('should throw BadRequestException when no reset record exists', async () => {
+      mockRedisService.getJson.mockResolvedValue(null);
+
+      await expect(
+        service.resetPassword({
+          email: 'test@example.com',
+          code: validCode,
+          newPassword: 'brand-new-1',
+        }),
+      ).rejects.toThrow('Invalid or expired reset code');
+      expect(mockPrisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('should increment attempts and throw on a wrong code', async () => {
+      mockRedisService.getJson.mockResolvedValue({ codeHash, attempts: 0 });
+      mockRedisService.ttl.mockResolvedValue(1234);
+
+      await expect(
+        service.resetPassword({
+          email: 'test@example.com',
+          code: '000000',
+          newPassword: 'brand-new-1',
+        }),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(mockRedisService.setJson).toHaveBeenCalledWith(
+        'pwdreset:test@example.com',
+        { codeHash, attempts: 1 },
+        1234,
+      );
+      expect(mockRedisService.del).not.toHaveBeenCalled();
+    });
+
+    it('should delete the record after the 5th failed attempt', async () => {
+      mockRedisService.getJson.mockResolvedValue({ codeHash, attempts: 4 });
+
+      await expect(
+        service.resetPassword({
+          email: 'test@example.com',
+          code: '000000',
+          newPassword: 'brand-new-1',
+        }),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(mockRedisService.del).toHaveBeenCalledWith(
+        'pwdreset:test@example.com',
+      );
+      expect(mockRedisService.setJson).not.toHaveBeenCalled();
+    });
+
+    it('should update DB + Auth0 and delete the reset key on success', async () => {
+      mockRedisService.getJson.mockResolvedValue({ codeHash, attempts: 1 });
+
+      const result = await service.resetPassword({
+        email: 'test@example.com',
+        code: validCode,
+        newPassword: 'brand-new-1',
+      });
+
+      expect(result).toEqual({
+        message: 'Password reset successfully',
+        auth0Synced: true,
+      });
+      const updateCall = mockPrisma.user.update.mock.calls[0][0];
+      expect(updateCall.where).toEqual({ id: mockUser.id });
+      expect(
+        await bcrypt.compare('brand-new-1', updateCall.data.password),
+      ).toBe(true);
+      expect(mockAuth0Service.updateUser).toHaveBeenCalledWith(
+        'auth0|123456789',
+        {
+          password: 'brand-new-1',
+        },
+      );
+      expect(mockRedisService.del).toHaveBeenCalledWith(
+        'pwdreset:test@example.com',
+      );
+    });
+
+    it('should report auth0Synced=false when the Auth0 mirror fails after DB update', async () => {
+      mockRedisService.getJson.mockResolvedValue({ codeHash, attempts: 0 });
+      mockAuth0Service.updateUser.mockRejectedValue(new Error('auth0 403'));
+
+      const result = await service.resetPassword({
+        email: 'test@example.com',
+        code: validCode,
+        newPassword: 'brand-new-1',
+      });
+
+      expect(result).toEqual({
+        message: 'Password reset successfully',
+        auth0Synced: false,
+        auth0SyncError: 'auth0 403',
+      });
+      expect(mockRedisService.del).toHaveBeenCalled();
     });
   });
 });

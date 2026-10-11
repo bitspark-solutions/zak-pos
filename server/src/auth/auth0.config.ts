@@ -21,10 +21,12 @@ export const auth0Config = {
   // Machine-to-machine client with Auth0 Management API scopes (user CRUD)
   mgmtClientId: process.env.AUTH0_MGMT_CLIENT_ID || '',
   mgmtClientSecret: process.env.AUTH0_MGMT_CLIENT_SECRET || '',
+  // Routes include the app's global /api/v1 prefix so redirect_uri matches
+  // the actual Nest endpoints registered in the Auth0 application.
   routes: {
-    login: '/auth/auth0/login',
-    logout: '/auth/auth0/logout',
-    callback: '/auth/auth0/callback',
+    login: '/api/v1/auth/auth0/login',
+    logout: '/api/v1/auth/auth0/logout',
+    callback: '/api/v1/auth/auth0/callback',
     postLogoutRedirect: '/',
   },
 };

@@ -19,6 +19,7 @@ describe('SalesService', () => {
     },
     saleLine: {
       create: jest.fn(),
+      findMany: jest.fn(),
     },
     payment: {
       create: jest.fn(),
@@ -52,6 +53,7 @@ describe('SalesService', () => {
 
   const mockInventoryService = {
     deductStock: jest.fn(),
+    restoreStock: jest.fn(),
   };
 
   // seedAccounts returns a chart-of-accounts Map<code, id>.
@@ -75,6 +77,10 @@ describe('SalesService', () => {
     mockDatabaseService.getPrisma.mockReturnValue({ prisma: mockTx });
     mockTenantService.seedAccounts.mockResolvedValue(accountsMap);
     mockInventoryService.deductStock.mockResolvedValue(undefined);
+    mockInventoryService.restoreStock.mockResolvedValue(undefined);
+    mockTx.journal.create.mockResolvedValue({ id: 'journal-1' });
+    mockTx.journalLine.create.mockResolvedValue({});
+    mockTx.saleLine.findMany.mockResolvedValue([]);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -427,6 +433,71 @@ describe('SalesService', () => {
   });
 
   describe('refund', () => {
+    const mockRefundedSale = {
+      id: 'sale-1',
+      tenantId: 'tenant-1',
+      shopId: 'shop-1',
+      cashierId: 'user-1',
+      status: 'completed',
+      channel: 'pos',
+      subtotal: 200,
+      discount: 0,
+      tax: 30,
+      total: 230,
+      paymentStatus: 'paid',
+      currency: 'BDT',
+      createdAt: new Date(),
+      postedAt: new Date(),
+    };
+
+    // 2 units at 100 plus 30 VAT; weighted-average cost 40 per unit.
+    const mockSaleLines = [
+      {
+        id: 'line-1',
+        saleId: 'sale-1',
+        productId: 'prod-1',
+        variantId: null,
+        qty: 2,
+        unitPrice: 100,
+        discount: 0,
+        taxId: null,
+        taxAmount: 30,
+        lineTotal: 230,
+      },
+    ];
+
+    const linesOfJournal = (journalId: string) =>
+      mockTx.journalLine.create.mock.calls
+        .map((call: any[]) => call[0].data)
+        .filter((data: any) => data.journalId === journalId);
+
+    const balanceOf = (journalId: string) => {
+      const lines = linesOfJournal(journalId);
+      return {
+        debits: lines.reduce((sum: number, l: any) => sum + Number(l.debit), 0),
+        credits: lines.reduce(
+          (sum: number, l: any) => sum + Number(l.credit),
+          0,
+        ),
+      };
+    };
+
+    const seedRefundMocks = () => {
+      mockTx.sale.findFirst.mockResolvedValue(mockRefundedSale);
+      mockTx.saleLine.findMany.mockResolvedValue(mockSaleLines);
+      mockTx.inventory.findFirst.mockResolvedValue({ avgCost: 40 });
+      mockTx.return.create.mockResolvedValue({ id: 'return-1' });
+      mockTx.sale.update.mockResolvedValue({
+        ...mockRefundedSale,
+        status: 'refunded',
+        paymentStatus: 'refunded',
+      });
+      mockTx.journal.create
+        .mockResolvedValueOnce({ id: 'journal-refund' })
+        .mockResolvedValueOnce({ id: 'journal-restock' });
+      mockTx.journalLine.create.mockResolvedValue({});
+    };
+
     it('should refund a completed paid sale inside a tenant-scoped transaction', async () => {
       const mockSale = {
         id: 'sale-1',
@@ -466,6 +537,178 @@ describe('SalesService', () => {
         where: { id: 'sale-1', tenantId: 'tenant-1' },
       });
       expect(mockTx.return.create).toHaveBeenCalled();
+    });
+
+    it('should post a balanced revenue reversal and restock journal for a full refund', async () => {
+      seedRefundMocks();
+
+      const result = await service.refund(
+        'sale-1',
+        { refundMethod: 'cash', reason: 'damaged' },
+        'tenant-1',
+      );
+
+      expect(result.status).toBe('refunded');
+      // accounts resolved from the tenant chart of accounts inside the same tx
+      expect(mockTenantService.seedAccounts).toHaveBeenCalledWith(
+        mockTx,
+        'tenant-1',
+      );
+      expect(mockTx.saleLine.findMany).toHaveBeenCalledWith({
+        where: { saleId: 'sale-1' },
+      });
+
+      // revenue reversal journal mirrors the sale journal it reverses
+      expect(mockTx.journal.create).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          data: expect.objectContaining({
+            tenantId: 'tenant-1',
+            description: 'Refund sale-1',
+            source: 'REFUND',
+            referenceType: 'sale',
+            referenceId: 'sale-1',
+            createdBy: 'user-1',
+            status: 'posted',
+          }),
+        }),
+      );
+      expect(linesOfJournal('journal-refund')).toEqual([
+        expect.objectContaining({
+          accountId: 'acc-revenue',
+          debit: 200,
+          credit: 0,
+          memo: 'Refund reason: damaged',
+        }),
+        expect.objectContaining({
+          accountId: 'acc-vat',
+          debit: 30,
+          credit: 0,
+        }),
+        expect.objectContaining({
+          accountId: 'acc-cash',
+          debit: 0,
+          credit: 230,
+          memo: 'Refund method: cash',
+        }),
+      ]);
+      expect(balanceOf('journal-refund')).toEqual({
+        debits: 230,
+        credits: 230,
+      });
+
+      // restock journal: Dr Inventory / Cr COGS at weighted-average cost
+      expect(mockTx.journal.create).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          data: expect.objectContaining({
+            tenantId: 'tenant-1',
+            description: 'Restock for Refund sale-1',
+            source: 'REFUND',
+            referenceType: 'sale',
+            referenceId: 'sale-1',
+            createdBy: 'user-1',
+            status: 'posted',
+          }),
+        }),
+      );
+      expect(linesOfJournal('journal-restock')).toEqual([
+        expect.objectContaining({
+          accountId: 'acc-inventory',
+          debit: 80,
+          credit: 0,
+        }),
+        expect.objectContaining({
+          accountId: 'acc-cogs',
+          debit: 0,
+          credit: 80,
+        }),
+      ]);
+      expect(balanceOf('journal-restock')).toEqual({ debits: 80, credits: 80 });
+
+      // physical restock uses the same scope: full quantity back on the shelf,
+      // inside the same tenant-scoped transaction
+      expect(mockInventoryService.restoreStock).toHaveBeenCalledWith(
+        'shop-1',
+        [{ productId: 'prod-1', variantId: null, quantity: 2 }],
+        'REFUND',
+        'sale-1',
+        'tenant-1',
+        mockTx,
+      );
+    });
+
+    it('should scale both journals proportionally for a partial refund', async () => {
+      seedRefundMocks();
+
+      await service.refund(
+        'sale-1',
+        {
+          refundMethod: 'card',
+          reason: 'one of two units',
+          lines: [{ lineId: 'line-1', qty: 1 }],
+        },
+        'tenant-1',
+      );
+
+      expect(linesOfJournal('journal-refund')).toEqual([
+        expect.objectContaining({ accountId: 'acc-revenue', debit: 100 }),
+        expect.objectContaining({ accountId: 'acc-vat', debit: 15 }),
+        expect.objectContaining({ accountId: 'acc-cash', credit: 115 }),
+      ]);
+      expect(balanceOf('journal-refund')).toEqual({
+        debits: 115,
+        credits: 115,
+      });
+      expect(linesOfJournal('journal-restock')).toEqual([
+        expect.objectContaining({ accountId: 'acc-inventory', debit: 40 }),
+        expect.objectContaining({ accountId: 'acc-cogs', credit: 40 }),
+      ]);
+      expect(balanceOf('journal-restock')).toEqual({ debits: 40, credits: 40 });
+
+      // only the refunded quantity is restocked
+      expect(mockInventoryService.restoreStock).toHaveBeenCalledWith(
+        'shop-1',
+        [{ productId: 'prod-1', variantId: null, quantity: 1 }],
+        'REFUND',
+        'sale-1',
+        'tenant-1',
+        mockTx,
+      );
+    });
+
+    it('should skip the restock journal when nothing comes back to stock', async () => {
+      mockTx.sale.findFirst.mockResolvedValue(mockRefundedSale);
+      mockTx.saleLine.findMany.mockResolvedValue([]);
+      mockTx.return.create.mockResolvedValue({ id: 'return-1' });
+      mockTx.sale.update.mockResolvedValue({
+        ...mockRefundedSale,
+        status: 'refunded',
+        paymentStatus: 'refunded',
+      });
+
+      await service.refund(
+        'sale-1',
+        { refundMethod: 'cash', reason: 'service failure' },
+        'tenant-1',
+      );
+
+      expect(mockTx.journal.create).toHaveBeenCalledTimes(1);
+      expect(mockTx.inventory.findFirst).not.toHaveBeenCalled();
+      expect(mockInventoryService.restoreStock).toHaveBeenCalledWith(
+        'shop-1',
+        [],
+        'REFUND',
+        'sale-1',
+        'tenant-1',
+        mockTx,
+      );
+      expect(linesOfJournal('journal-1')).toEqual([
+        expect.objectContaining({ accountId: 'acc-revenue', debit: 200 }),
+        expect.objectContaining({ accountId: 'acc-vat', debit: 30 }),
+        expect.objectContaining({ accountId: 'acc-cash', credit: 230 }),
+      ]);
+      expect(balanceOf('journal-1')).toEqual({ debits: 230, credits: 230 });
     });
 
     it('should throw NotFoundException if the sale belongs to another tenant', async () => {

@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
 import { InventoryService } from './inventory.service';
 import { DatabaseService } from '../database/database.service';
 
@@ -325,6 +326,118 @@ describe('InventoryService', () => {
           'tenant-1',
         ),
       ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('restoreStock', () => {
+    it('should increase quantity-on-hand and record an IN movement', async () => {
+      mockPrisma.inventory.findFirst.mockResolvedValue({
+        id: 'inv-1',
+        quantityOnHand: 3,
+        avgCost: 50,
+      });
+      mockPrisma.inventory.update.mockResolvedValue({});
+      mockPrisma.inventoryMovement.create.mockResolvedValue({});
+
+      await service.restoreStock(
+        'shop-1',
+        [{ productId: 'p1', variantId: 'var-1', quantity: 2 }],
+        'REFUND',
+        'sale-1',
+        'tenant-1',
+      );
+
+      expect(mockPrisma.inventory.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            shopId: 'shop-1',
+            productId: 'p1',
+            variantId: 'var-1',
+            product: { tenantId: 'tenant-1' },
+          }),
+        }),
+      );
+      expect(mockPrisma.inventory.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'inv-1' },
+          data: { quantityOnHand: 5 },
+        }),
+      );
+      expect(mockPrisma.inventoryMovement.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            tenantId: 'tenant-1',
+            shopId: 'shop-1',
+            productId: 'p1',
+            variantId: 'var-1',
+            movementType: 'IN',
+            quantity: 2,
+            unitCost: 50,
+            referenceType: 'REFUND',
+            referenceId: 'sale-1',
+          }),
+        }),
+      );
+    });
+
+    it('should skip items whose inventory row is missing instead of throwing', async () => {
+      mockPrisma.inventory.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.restoreStock(
+          'shop-1',
+          [{ productId: 'p1', quantity: 5 }],
+          'REFUND',
+          'sale-1',
+          'tenant-1',
+        ),
+      ).resolves.not.toThrow();
+
+      expect(mockPrisma.inventory.update).not.toHaveBeenCalled();
+      expect(mockPrisma.inventoryMovement.create).not.toHaveBeenCalled();
+    });
+
+    it('should reuse an external transaction without opening a new one', async () => {
+      const findFirst = jest.fn().mockResolvedValue({
+        id: 'inv-9',
+        quantityOnHand: 0,
+        avgCost: 20,
+      });
+      const update = jest.fn().mockResolvedValue({});
+      const createMovement = jest.fn().mockResolvedValue({});
+      const externalTx = {
+        inventory: { findFirst, update },
+        inventoryMovement: { create: createMovement },
+      } as unknown as Prisma.TransactionClient;
+
+      await service.restoreStock(
+        'shop-1',
+        [{ productId: 'p1', variantId: null, quantity: 4 }],
+        'REFUND',
+        'sale-1',
+        'tenant-1',
+        externalTx,
+      );
+
+      expect(findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ variantId: null }),
+        }),
+      );
+      expect(update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { quantityOnHand: 4 } }),
+      );
+      expect(createMovement).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            movementType: 'IN',
+            quantity: 4,
+            referenceType: 'REFUND',
+          }),
+        }),
+      );
+      // no extra tenant transaction opened
+      expect(mockDatabaseService.withTenant).not.toHaveBeenCalled();
     });
   });
 });

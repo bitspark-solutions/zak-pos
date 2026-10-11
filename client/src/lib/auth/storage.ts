@@ -20,6 +20,13 @@ export const tokenStorage = {
     }
   },
 
+  // A "remember me" session keeps the token in localStorage rather than the
+  // per-tab sessionStorage.
+  isRemembered(): boolean {
+    if (typeof window === 'undefined') return false;
+    return !!localStorage.getItem(TOKEN_KEY);
+  },
+
   setToken(token: string, remember: boolean = false): void {
     if (typeof window === 'undefined') return;
     if (remember) {

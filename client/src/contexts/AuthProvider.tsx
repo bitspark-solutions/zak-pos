@@ -7,7 +7,7 @@ import { User, LoginData, RegisterData } from '@/types/auth';
 import { authApi } from '@/lib/api/auth';
 import { tokenStorage } from '@/lib/auth/storage';
 import { hasPermission, hasRole } from '@/lib/auth/permissions';
-import { ROUTES } from '@/lib/utils/constants';
+import { ROUTES, AUTH0_QUERY_PARAMS } from '@/lib/utils/constants';
 
 interface AuthProviderProps {
   children: ReactNode;
@@ -28,15 +28,43 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const initializeAuth = async () => {
     try {
       setIsLoading(true);
-      const storedToken = tokenStorage.getToken();
-      const storedUser = tokenStorage.getUserData();
 
-      if (storedToken && storedUser) {
-        // Validate token by fetching profile
+      // Auth0 Universal Login lands back on the client with ?token=<jwt>
+      // (server callback redirects to FRONTEND_URL). Capture it into storage
+      // before reading, then strip it from the URL so it is never re-consumed
+      // or leaked in history.
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        const auth0Token = params.get(AUTH0_QUERY_PARAMS.TOKEN);
+        const auth0Error = params.get(AUTH0_QUERY_PARAMS.ERROR);
+
+        if (auth0Token) {
+          tokenStorage.setToken(auth0Token, false);
+        } else if (auth0Error) {
+          setError('Auth0 login failed. Please try again or use email/password.');
+        }
+
+        if (auth0Token || auth0Error) {
+          params.delete(AUTH0_QUERY_PARAMS.TOKEN);
+          params.delete(AUTH0_QUERY_PARAMS.ERROR);
+          const query = params.toString();
+          const cleanUrl =
+            window.location.pathname + (query ? `?${query}` : '');
+          window.history.replaceState({}, '', cleanUrl);
+        }
+      }
+
+      const storedToken = tokenStorage.getToken();
+
+      if (storedToken) {
+        // Validate the token and load the authoritative user (name, role,
+        // permissions, tenantId) from the API. This covers both a normal page
+        // refresh and a fresh Auth0 token that has no cached user yet.
         try {
           const profile = await authApi.getProfile();
           setUser(profile as User);
           setToken(storedToken);
+          tokenStorage.setUserData(profile as User, tokenStorage.isRemembered());
         } catch (err: unknown) {
           // Token invalid or expired, clear storage
           const error = err as { message?: string };

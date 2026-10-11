@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
@@ -18,6 +19,8 @@ import {
 
 @Injectable()
 export class InventoryService {
+  private readonly logger = new Logger(InventoryService.name);
+
   constructor(private readonly databaseService: DatabaseService) {}
 
   async getStock(
@@ -374,6 +377,77 @@ export class InventoryService {
             movementType: 'OUT',
             quantity: item.quantity,
             unitCost: item.unitCost || Number(inventory.avgCost),
+            referenceType,
+            referenceId,
+          },
+        });
+      }
+    };
+
+    if (externalTx) {
+      await run(externalTx);
+      return;
+    }
+    await this.databaseService.withTenant(tenantId, run);
+  }
+
+  /**
+   * Mirrors `deductStock` for returns/refunds: puts the quantity back on the
+   * shelf (same inventory-row lookup) and records `IN` movements. Unlike
+   * `deductStock`, a missing inventory row is skipped with a warning instead
+   * of throwing — the caller's refund journal excludes the same line's cost,
+   * so the books and the physical stock stay consistent.
+   */
+  async restoreStock(
+    shopId: string,
+    items: {
+      productId: string;
+      variantId?: string | null;
+      quantity: number;
+    }[],
+    referenceType: string,
+    referenceId: string,
+    tenantId: string,
+    externalTx?: Prisma.TransactionClient,
+  ): Promise<void> {
+    // externalTx keeps the restock atomic with a caller's transaction (e.g. a
+    // sale refund); the RLS tenant GUC is already set on that connection.
+    const run = async (tx: Prisma.TransactionClient) => {
+      for (const item of items) {
+        const inventory = await tx.inventory.findFirst({
+          where: {
+            shopId,
+            productId: item.productId,
+            variantId: item.variantId || null,
+            product: { tenantId },
+          },
+        });
+
+        if (!inventory) {
+          this.logger.warn(
+            `No inventory record for product ${item.productId} in shop ${shopId}; refund restock skips this line`,
+          );
+          continue;
+        }
+
+        // Restock quantity-on-hand
+        await tx.inventory.update({
+          where: { id: inventory.id },
+          data: {
+            quantityOnHand: Number(inventory.quantityOnHand) + item.quantity,
+          },
+        });
+
+        // Record movement
+        await tx.inventoryMovement.create({
+          data: {
+            tenantId,
+            shopId,
+            productId: item.productId,
+            variantId: item.variantId || null,
+            movementType: 'IN',
+            quantity: item.quantity,
+            unitCost: Number(inventory.avgCost),
             referenceType,
             referenceId,
           },
