@@ -1,4 +1,13 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  UseGuards,
+} from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -18,7 +27,10 @@ export class UsersController {
   @Post()
   @Roles(Role.ADMIN, Role.OWNER)
   @RequirePermissions(Permission.USER_CREATE)
-  create(@Body() createUserDto: CreateUserDto, @CurrentTenant() tenantId: string) {
+  create(
+    @Body() createUserDto: CreateUserDto,
+    @CurrentTenant() tenantId: string,
+  ) {
     return this.usersService.createForTenant(createUserDto, tenantId);
   }
 

@@ -56,13 +56,13 @@ export class DatabaseService implements OnModuleDestroy {
 
   async findUserByEmail(email: string) {
     return await this.prisma.user.findUnique({
-      where: { email }
+      where: { email },
     });
   }
 
   async findUserById(id: string) {
     return await this.prisma.user.findUnique({
-      where: { id }
+      where: { id },
     });
   }
 
@@ -84,28 +84,31 @@ export class DatabaseService implements OnModuleDestroy {
         externalId: userData.externalId,
         status: 'active',
         locale: 'en',
-      }
+      },
     });
   }
 
-  async updateUser(id: string, userData: Partial<{
-    email: string;
-    password: string;
-    name: string;
-    role: string;
-    tenantId: string;
-    externalId: string;
-    status: string;
-  }>) {
+  async updateUser(
+    id: string,
+    userData: Partial<{
+      email: string;
+      password: string;
+      name: string;
+      role: string;
+      tenantId: string;
+      externalId: string;
+      status: string;
+    }>,
+  ) {
     return await this.prisma.user.update({
       where: { id },
-      data: userData
+      data: userData,
     });
   }
 
   async deleteUser(id: string) {
     return await this.prisma.user.delete({
-      where: { id }
+      where: { id },
     });
   }
 
@@ -115,7 +118,7 @@ export class DatabaseService implements OnModuleDestroy {
 
   async findUsersByTenant(tenantId: string) {
     return await this.prisma.user.findMany({
-      where: { tenantId }
+      where: { tenantId },
     });
   }
 
@@ -123,7 +126,7 @@ export class DatabaseService implements OnModuleDestroy {
     try {
       await this.prisma.$queryRaw`SELECT 1`;
       return true;
-    } catch (error) {
+    } catch {
       return false;
     }
   }
@@ -147,7 +150,11 @@ export class DatabaseService implements OnModuleDestroy {
       await this.prisma.$queryRaw`SELECT 1`;
       return { status: 'connected', message: 'Database connection successful' };
     } catch (error) {
-      throw new Error(`Database connection failed: ${error.message}`);
+      throw new Error(
+        `Database connection failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
     }
   }
 

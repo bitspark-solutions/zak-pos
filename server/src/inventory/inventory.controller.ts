@@ -9,8 +9,16 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { InventoryService } from './inventory.service';
-import { StockQueryDto, AdjustStockDto, InventoryMovementQueryDto } from './dto/inventory.dto';
-import { IInventoryWithProduct, IInventoryMovement, StockCheckResult } from './interfaces/inventory.interface';
+import {
+  StockQueryDto,
+  AdjustStockDto,
+  InventoryMovementQueryDto,
+} from './dto/inventory.dto';
+import {
+  IInventoryWithProduct,
+  IInventoryMovement,
+  StockCheckResult,
+} from './interfaces/inventory.interface';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
@@ -69,6 +77,10 @@ export class InventoryController {
     },
     @CurrentTenant() tenantId: string,
   ): Promise<{ available: boolean; results: StockCheckResult[] }> {
-    return this.inventoryService.checkAvailability(body.shopId, body.items, tenantId);
+    return this.inventoryService.checkAvailability(
+      body.shopId,
+      body.items,
+      tenantId,
+    );
   }
 }

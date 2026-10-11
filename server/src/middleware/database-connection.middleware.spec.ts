@@ -7,13 +7,21 @@ describe('DatabaseConnectionMiddleware', () => {
 
   const mockDatabaseService = {
     isConnected: jest.fn(),
-    getConnectionInfo: jest.fn().mockReturnValue({ database: 'zakpos_dev', host: 'localhost', port: 5432 }),
+    getConnectionInfo: jest.fn().mockReturnValue({
+      database: 'zakpos_dev',
+      host: 'localhost',
+      port: 5432,
+    }),
   };
 
   beforeEach(() => {
     jest.clearAllMocks();
     mockDatabaseService.isConnected.mockResolvedValue(true);
-    mockDatabaseService.getConnectionInfo.mockReturnValue({ database: 'zakpos_dev', host: 'localhost', port: 5432 });
+    mockDatabaseService.getConnectionInfo.mockReturnValue({
+      database: 'zakpos_dev',
+      host: 'localhost',
+      port: 5432,
+    });
     databaseService = mockDatabaseService as any;
     middleware = new DatabaseConnectionMiddleware(databaseService);
   });

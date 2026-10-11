@@ -1,4 +1,10 @@
-import { IsString, IsNumber, IsOptional, IsBoolean, Min } from 'class-validator';
+import {
+  IsString,
+  IsNumber,
+  IsOptional,
+  IsBoolean,
+  Min,
+} from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class CreateProductDto {
@@ -84,12 +90,12 @@ export class UpdateProductDto {
 export class ProductQueryDto {
   @IsNumber()
   @IsOptional()
-  @Transform(({ value }) => parseInt(value))
+  @Transform(({ value }: { value: string }) => parseInt(value))
   page?: number = 1;
 
   @IsNumber()
   @IsOptional()
-  @Transform(({ value }) => parseInt(value))
+  @Transform(({ value }: { value: string }) => parseInt(value))
   limit?: number = 20;
 
   @IsString()

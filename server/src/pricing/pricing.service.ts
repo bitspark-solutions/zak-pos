@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Tax } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 
 export interface TaxCalculation {
@@ -41,7 +42,9 @@ export class PricingService {
     tenantId: string,
   ): Promise<PriceCalculation> {
     // Get all tax IDs from lines
-    const taxIds = [...new Set(lines.filter((l) => l.taxId).map((l) => l.taxId))] as string[];
+    const taxIds = [
+      ...new Set(lines.filter((l) => l.taxId).map((l) => l.taxId)),
+    ] as string[];
 
     // Fetch taxes (RLS-scoped; tenantId filter kept for defense in depth)
     const taxes = await this.databaseService.withTenant(tenantId, (prisma) =>
@@ -54,7 +57,9 @@ export class PricingService {
       }),
     );
 
-    const taxMap = new Map<string, any>(taxes.map((t) => [t.id, t]));
+    const taxMap = new Map<string, Tax>(
+      taxes.map((t): [string, Tax] => [t.id, t]),
+    );
 
     let subtotal = 0;
     let totalDiscount = 0;

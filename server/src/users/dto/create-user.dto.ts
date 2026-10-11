@@ -23,4 +23,3 @@ export class CreateUserDto {
   @IsString()
   externalId?: string;
 }
-

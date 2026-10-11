@@ -3,6 +3,7 @@ import { PassportStrategy } from '@nestjs/passport';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import { ROLE_PERMISSIONS, Role } from '../enums/permissions.enum';
+import type { AuthUser, TokenPayload } from '../interfaces/auth-user.interface';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -14,7 +15,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  async validate(payload: any) {
+  async validate(payload: TokenPayload): Promise<AuthUser> {
     // Token signature is necessary but not sufficient: the local DB is the
     // source of truth, so every request re-reads tenant/role/status.
     const user = await this.databaseService

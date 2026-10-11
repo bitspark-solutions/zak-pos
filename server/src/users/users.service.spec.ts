@@ -40,7 +40,9 @@ describe('UsersService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
-    mockDatabaseService.withTenant.mockImplementation((tenantId: string, fn: any) => fn(mockPrisma));
+    mockDatabaseService.withTenant.mockImplementation(
+      (tenantId: string, fn: any) => fn(mockPrisma),
+    );
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -64,7 +66,10 @@ describe('UsersService', () => {
         role: 'cashier',
       };
 
-      mockDatabaseService.createUser.mockResolvedValue({ ...mockUser, ...createUserDto });
+      mockDatabaseService.createUser.mockResolvedValue({
+        ...mockUser,
+        ...createUserDto,
+      });
 
       const result = await service.create(createUserDto, 'tenant-1');
 
@@ -95,11 +100,20 @@ describe('UsersService', () => {
         role: 'cashier',
       };
 
-      mockPrisma.user.create.mockResolvedValue({ ...mockUser, ...createUserDto });
+      mockPrisma.user.create.mockResolvedValue({
+        ...mockUser,
+        ...createUserDto,
+      });
 
-      const result = await service.createForTenant(createUserDto as any, 'tenant-1');
+      const result = await service.createForTenant(
+        createUserDto as any,
+        'tenant-1',
+      );
 
-      expect(mockDatabaseService.withTenant).toHaveBeenCalledWith('tenant-1', expect.any(Function));
+      expect(mockDatabaseService.withTenant).toHaveBeenCalledWith(
+        'tenant-1',
+        expect.any(Function),
+      );
       expect(mockPrisma.user.create).toHaveBeenCalledWith({
         data: {
           email: createUserDto.email,
@@ -123,8 +137,13 @@ describe('UsersService', () => {
 
       const result = await service.findAll('tenant-1');
 
-      expect(mockDatabaseService.withTenant).toHaveBeenCalledWith('tenant-1', expect.any(Function));
-      expect(mockPrisma.user.findMany).toHaveBeenCalledWith({ where: { tenantId: 'tenant-1' } });
+      expect(mockDatabaseService.withTenant).toHaveBeenCalledWith(
+        'tenant-1',
+        expect.any(Function),
+      );
+      expect(mockPrisma.user.findMany).toHaveBeenCalledWith({
+        where: { tenantId: 'tenant-1' },
+      });
       expect(result.length).toBe(1);
       result.forEach((user) => {
         expect(user).not.toHaveProperty('password');
@@ -138,7 +157,10 @@ describe('UsersService', () => {
 
       const result = await service.findOne('123', 'tenant-1');
 
-      expect(mockDatabaseService.withTenant).toHaveBeenCalledWith('tenant-1', expect.any(Function));
+      expect(mockDatabaseService.withTenant).toHaveBeenCalledWith(
+        'tenant-1',
+        expect.any(Function),
+      );
       expect(mockPrisma.user.findFirst).toHaveBeenCalledWith({
         where: { id: '123', tenantId: 'tenant-1' },
       });
@@ -149,13 +171,17 @@ describe('UsersService', () => {
     it('should throw NotFoundException when RLS hides the user (other tenant)', async () => {
       mockPrisma.user.findFirst.mockResolvedValue(null);
 
-      await expect(service.findOne('123', 'tenant-2')).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('123', 'tenant-2')).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('should throw NotFoundException when user not found', async () => {
       mockPrisma.user.findFirst.mockResolvedValue(null);
 
-      await expect(service.findOne('nonexistent-id', 'tenant-1')).rejects.toThrow(NotFoundException);
+      await expect(
+        service.findOne('nonexistent-id', 'tenant-1'),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -167,11 +193,17 @@ describe('UsersService', () => {
 
       const result = await service.update('123', updateData, 'tenant-1');
 
-      expect(mockDatabaseService.withTenant).toHaveBeenCalledWith('tenant-1', expect.any(Function));
+      expect(mockDatabaseService.withTenant).toHaveBeenCalledWith(
+        'tenant-1',
+        expect.any(Function),
+      );
       expect(mockPrisma.user.findFirst).toHaveBeenCalledWith({
         where: { id: '123', tenantId: 'tenant-1' },
       });
-      expect(mockPrisma.user.update).toHaveBeenCalledWith({ where: { id: '123' }, data: updateData });
+      expect(mockPrisma.user.update).toHaveBeenCalledWith({
+        where: { id: '123' },
+        data: updateData,
+      });
       expect(result).not.toHaveProperty('password');
     });
 
@@ -192,18 +224,25 @@ describe('UsersService', () => {
 
       const result = await service.remove('123', 'tenant-1');
 
-      expect(mockDatabaseService.withTenant).toHaveBeenCalledWith('tenant-1', expect.any(Function));
+      expect(mockDatabaseService.withTenant).toHaveBeenCalledWith(
+        'tenant-1',
+        expect.any(Function),
+      );
       expect(mockPrisma.user.findFirst).toHaveBeenCalledWith({
         where: { id: '123', tenantId: 'tenant-1' },
       });
-      expect(mockPrisma.user.delete).toHaveBeenCalledWith({ where: { id: '123' } });
+      expect(mockPrisma.user.delete).toHaveBeenCalledWith({
+        where: { id: '123' },
+      });
       expect(result).not.toHaveProperty('password');
     });
 
     it('should throw and not delete when user is in another tenant', async () => {
       mockPrisma.user.findFirst.mockResolvedValue(null);
 
-      await expect(service.remove('123', 'tenant-2')).rejects.toThrow(NotFoundException);
+      await expect(service.remove('123', 'tenant-2')).rejects.toThrow(
+        NotFoundException,
+      );
       expect(mockPrisma.user.delete).not.toHaveBeenCalled();
     });
   });

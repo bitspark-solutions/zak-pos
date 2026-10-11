@@ -17,13 +17,20 @@ export class DatabaseConnectionMiddleware implements NestMiddleware {
         if (isConnected) {
           this.logger.log('🔗 Database connection middleware: Connected to DB');
           const connectionInfo = this.databaseService.getConnectionInfo();
-          this.logger.log(`📊 Database: ${connectionInfo.database}@${connectionInfo.host}:${connectionInfo.port}`);
+          this.logger.log(
+            `📊 Database: ${connectionInfo.database}@${connectionInfo.host}:${connectionInfo.port}`,
+          );
         } else {
-          this.logger.warn('⚠️ Database connection middleware: Not connected to DB');
+          this.logger.warn(
+            '⚠️ Database connection middleware: Not connected to DB',
+          );
         }
         this.connectionChecked = true;
       } catch (error) {
-        this.logger.error('❌ Database connection middleware: Connection failed', error.message);
+        this.logger.error(
+          '❌ Database connection middleware: Connection failed',
+          error instanceof Error ? error.message : String(error),
+        );
         this.connectionChecked = true;
       }
     }

@@ -10,7 +10,10 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { SalesService } from './sales.service';
-import type { CommitSaleDto, RefundSaleDto } from './interfaces/sales.interface';
+import type {
+  CommitSaleDto,
+  RefundSaleDto,
+} from './interfaces/sales.interface';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
@@ -55,7 +58,10 @@ export class SalesController {
   @Get(':id/details')
   @Roles(Role.OWNER, Role.MANAGER, Role.CASHIER)
   @RequirePermissions(Permission.SALE_READ)
-  async findByIdWithLines(@Param('id') id: string, @CurrentTenant() tenantId: string) {
+  async findByIdWithLines(
+    @Param('id') id: string,
+    @CurrentTenant() tenantId: string,
+  ) {
     return this.salesService.findByIdWithLines(id, tenantId);
   }
 

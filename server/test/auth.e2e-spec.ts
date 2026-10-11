@@ -179,9 +179,7 @@ describe('Authentication (e2e)', () => {
     });
 
     it('should fail to get profile without token', async () => {
-      await request(app.getHttpServer())
-        .get('/auth/profile')
-        .expect(401);
+      await request(app.getHttpServer()).get('/auth/profile').expect(401);
     });
 
     it('should fail to get profile with invalid token', async () => {
@@ -219,9 +217,7 @@ describe('Authentication (e2e)', () => {
     });
 
     it('should fail to refresh token without authorization', async () => {
-      await request(app.getHttpServer())
-        .post('/auth/refresh')
-        .expect(401);
+      await request(app.getHttpServer()).post('/auth/refresh').expect(401);
     });
   });
 
@@ -277,7 +273,7 @@ describe('Authentication (e2e)', () => {
             email: `concurrent${i}@example.com`,
             password: 'password123',
             name: `Concurrent User ${i}`,
-          })
+          }),
       );
 
       const responses = await Promise.all(registerPromises);

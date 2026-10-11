@@ -33,7 +33,7 @@ export class HealthController {
       return {
         status: 'error',
         message: 'Database connection failed',
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         timestamp: new Date().toISOString(),
       };
     }

@@ -1,7 +1,20 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
+import type { Prisma, Invoice } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
-import { CreateInvoiceDto, UpdateInvoiceDto, InvoiceQueryDto } from './dto/invoice.dto';
-import { IInvoice, IInvoiceWithDetails, InvoiceStatus } from './interfaces/invoice.interface';
+import {
+  CreateInvoiceDto,
+  UpdateInvoiceDto,
+  InvoiceQueryDto,
+} from './dto/invoice.dto';
+import {
+  IInvoice,
+  IInvoiceWithDetails,
+  InvoiceStatus,
+} from './interfaces/invoice.interface';
 
 @Injectable()
 export class InvoiceService {
@@ -12,11 +25,17 @@ export class InvoiceService {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
-    const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+    const random = Math.floor(Math.random() * 10000)
+      .toString()
+      .padStart(4, '0');
     return `INV-${year}${month}${day}-${random}`;
   }
 
-  async create(createInvoiceDto: CreateInvoiceDto, userId: string, tenantId: string): Promise<IInvoice> {
+  async create(
+    createInvoiceDto: CreateInvoiceDto,
+    userId: string,
+    tenantId: string,
+  ): Promise<IInvoice> {
     return this.databaseService.withTenant(tenantId, async (prisma) => {
       // If saleId provided, get sale data
       let subtotal = 0;
@@ -44,7 +63,9 @@ export class InvoiceService {
           shopId: createInvoiceDto.shopId,
           saleId: createInvoiceDto.saleId,
           customerId: createInvoiceDto.customerId,
-          dueDate: createInvoiceDto.dueDate ? new Date(createInvoiceDto.dueDate) : null,
+          dueDate: createInvoiceDto.dueDate
+            ? new Date(createInvoiceDto.dueDate)
+            : null,
           notes: createInvoiceDto.notes,
           subtotal,
           tax,
@@ -58,9 +79,17 @@ export class InvoiceService {
     });
   }
 
-  async findAll(query: InvoiceQueryDto, tenantId: string): Promise<{ data: IInvoiceWithDetails[]; total: number; page: number; limit: number }> {
+  async findAll(
+    query: InvoiceQueryDto,
+    tenantId: string,
+  ): Promise<{
+    data: IInvoiceWithDetails[];
+    total: number;
+    page: number;
+    limit: number;
+  }> {
     return this.databaseService.withTenant(tenantId, async (prisma) => {
-      const where: any = { tenantId };
+      const where: Prisma.InvoiceWhereInput = { tenantId };
       if (query.shopId) where.shopId = query.shopId;
       if (query.customerId) where.customerId = query.customerId;
       if (query.status) where.status = query.status;
@@ -74,7 +103,9 @@ export class InvoiceService {
           where,
           include: {
             shop: { select: { id: true, name: true } },
-            customer: { select: { id: true, name: true, email: true, phone: true } },
+            customer: {
+              select: { id: true, name: true, email: true, phone: true },
+            },
             sale: { select: { id: true, total: true, status: true } },
           },
           orderBy: { createdAt: 'desc' },
@@ -89,11 +120,13 @@ export class InvoiceService {
           ...this.mapToInterface(inv),
           shop: inv.shop,
           customer: inv.customer,
-          sale: inv.sale ? {
-            id: inv.sale.id,
-            total: Number(inv.sale.total),
-            status: inv.sale.status,
-          } : null,
+          sale: inv.sale
+            ? {
+                id: inv.sale.id,
+                total: Number(inv.sale.total),
+                status: inv.sale.status,
+              }
+            : null,
         })),
         total,
         page,
@@ -108,7 +141,9 @@ export class InvoiceService {
         where: { id, tenantId },
         include: {
           shop: { select: { id: true, name: true } },
-          customer: { select: { id: true, name: true, email: true, phone: true } },
+          customer: {
+            select: { id: true, name: true, email: true, phone: true },
+          },
           sale: { select: { id: true, total: true, status: true } },
         },
       });
@@ -121,32 +156,45 @@ export class InvoiceService {
         ...this.mapToInterface(invoice),
         shop: invoice.shop,
         customer: invoice.customer,
-        sale: invoice.sale ? {
-          id: invoice.sale.id,
-          total: Number(invoice.sale.total),
-          status: invoice.sale.status,
-        } : null,
+        sale: invoice.sale
+          ? {
+              id: invoice.sale.id,
+              total: Number(invoice.sale.total),
+              status: invoice.sale.status,
+            }
+          : null,
       };
     });
   }
 
-  async update(id: string, updateInvoiceDto: UpdateInvoiceDto, tenantId: string): Promise<IInvoice> {
+  async update(
+    id: string,
+    updateInvoiceDto: UpdateInvoiceDto,
+    tenantId: string,
+  ): Promise<IInvoice> {
     return this.databaseService.withTenant(tenantId, async (prisma) => {
-      const invoice = await prisma.invoice.findFirst({ where: { id, tenantId } });
+      const invoice = await prisma.invoice.findFirst({
+        where: { id, tenantId },
+      });
       if (!invoice) {
         throw new NotFoundException('Invoice not found');
       }
 
       // Validate status transition
       if (updateInvoiceDto.status) {
-        this.validateStatusTransition(invoice.status as InvoiceStatus, updateInvoiceDto.status);
+        this.validateStatusTransition(
+          invoice.status as InvoiceStatus,
+          updateInvoiceDto.status,
+        );
       }
 
       const updated = await prisma.invoice.update({
         where: { id },
         data: {
           status: updateInvoiceDto.status,
-          dueDate: updateInvoiceDto.dueDate ? new Date(updateInvoiceDto.dueDate) : undefined,
+          dueDate: updateInvoiceDto.dueDate
+            ? new Date(updateInvoiceDto.dueDate)
+            : undefined,
           notes: updateInvoiceDto.notes,
         },
       });
@@ -157,13 +205,17 @@ export class InvoiceService {
 
   async send(id: string, tenantId: string): Promise<IInvoice> {
     return this.databaseService.withTenant(tenantId, async (prisma) => {
-      const invoice = await prisma.invoice.findFirst({ where: { id, tenantId } });
+      const invoice = await prisma.invoice.findFirst({
+        where: { id, tenantId },
+      });
       if (!invoice) {
         throw new NotFoundException('Invoice not found');
       }
 
       if (invoice.status !== 'draft' && invoice.status !== 'confirmed') {
-        throw new BadRequestException('Invoice must be in draft or confirmed status to send');
+        throw new BadRequestException(
+          'Invoice must be in draft or confirmed status to send',
+        );
       }
 
       const updated = await prisma.invoice.update({
@@ -180,7 +232,9 @@ export class InvoiceService {
 
   async confirm(id: string, tenantId: string): Promise<IInvoice> {
     return this.databaseService.withTenant(tenantId, async (prisma) => {
-      const invoice = await prisma.invoice.findFirst({ where: { id, tenantId } });
+      const invoice = await prisma.invoice.findFirst({
+        where: { id, tenantId },
+      });
       if (!invoice) {
         throw new NotFoundException('Invoice not found');
       }
@@ -200,7 +254,9 @@ export class InvoiceService {
 
   async cancel(id: string, tenantId: string): Promise<IInvoice> {
     return this.databaseService.withTenant(tenantId, async (prisma) => {
-      const invoice = await prisma.invoice.findFirst({ where: { id, tenantId } });
+      const invoice = await prisma.invoice.findFirst({
+        where: { id, tenantId },
+      });
       if (!invoice) {
         throw new NotFoundException('Invoice not found');
       }
@@ -218,7 +274,10 @@ export class InvoiceService {
     });
   }
 
-  private validateStatusTransition(current: InvoiceStatus, next: InvoiceStatus): void {
+  private validateStatusTransition(
+    current: InvoiceStatus,
+    next: InvoiceStatus,
+  ): void {
     const validTransitions: Record<InvoiceStatus, InvoiceStatus[]> = {
       draft: ['sent', 'cancelled'],
       sent: ['confirmed', 'cancelled'],
@@ -234,7 +293,7 @@ export class InvoiceService {
     }
   }
 
-  private mapToInterface(invoice: any): IInvoice {
+  private mapToInterface(invoice: Invoice): IInvoice {
     return {
       id: invoice.id,
       invoiceNumber: invoice.invoiceNumber,

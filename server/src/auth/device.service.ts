@@ -17,11 +17,14 @@ export interface DeviceInfo {
 export class DeviceService {
   constructor(private databaseService: DatabaseService) {}
 
-  async registerDevice(userId: string, deviceInfo: {
-    deviceName: string;
-    deviceType: 'web' | 'mobile' | 'pos';
-    fingerprint: string;
-  }): Promise<DeviceInfo> {
+  registerDevice(
+    userId: string,
+    deviceInfo: {
+      deviceName: string;
+      deviceType: 'web' | 'mobile' | 'pos';
+      fingerprint: string;
+    },
+  ): Promise<DeviceInfo> {
     const device = {
       id: Date.now().toString(),
       userId,
@@ -36,24 +39,25 @@ export class DeviceService {
 
     // Store device in database (simplified for now)
     // In a real implementation, this would use the database service
-    return device;
+    return Promise.resolve(device);
   }
 
-  async getDevicesByUser(userId: string): Promise<DeviceInfo[]> {
+  getDevicesByUser(_userId: string): Promise<DeviceInfo[]> {
     // Get user devices from database
     // Simplified implementation
-    return [];
+    return Promise.resolve([]);
   }
 
-  async revokeDevice(deviceId: string): Promise<boolean> {
+  revokeDevice(_deviceId: string): Promise<boolean> {
     // Revoke device access
     // Simplified implementation
-    return true;
+    return Promise.resolve(true);
   }
 
-  async updateDeviceLastSeen(deviceId: string): Promise<void> {
+  updateDeviceLastSeen(_deviceId: string): Promise<void> {
     // Update last seen timestamp
     // Simplified implementation
+    return Promise.resolve();
   }
 
   generateFingerprint(userAgent: string, ip: string): string {

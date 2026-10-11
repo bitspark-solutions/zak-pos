@@ -12,8 +12,15 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { ProductService } from './product.service';
-import { CreateProductDto, UpdateProductDto, ProductQueryDto } from './dto/product.dto';
-import { IProductWithDetails, PaginatedResult } from './interfaces/product.interface';
+import {
+  CreateProductDto,
+  UpdateProductDto,
+  ProductQueryDto,
+} from './dto/product.dto';
+import {
+  IProductWithDetails,
+  PaginatedResult,
+} from './interfaces/product.interface';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';

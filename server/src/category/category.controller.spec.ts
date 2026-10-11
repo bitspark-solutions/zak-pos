@@ -4,7 +4,6 @@ import { CategoryService } from './category.service';
 
 describe('CategoryController', () => {
   let controller: CategoryController;
-  let service: CategoryService;
 
   const mockCategoryService = {
     create: jest.fn(),
@@ -18,13 +17,10 @@ describe('CategoryController', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [CategoryController],
-      providers: [
-        { provide: CategoryService, useValue: mockCategoryService },
-      ],
+      providers: [{ provide: CategoryService, useValue: mockCategoryService }],
     }).compile();
 
     controller = module.get<CategoryController>(CategoryController);
-    service = module.get<CategoryService>(CategoryService);
     jest.clearAllMocks();
   });
 
@@ -36,9 +32,9 @@ describe('CategoryController', () => {
     it('should delegate to categoryService.create', async () => {
       const dto = { name: 'Cat 1' };
       mockCategoryService.create.mockResolvedValue({ id: 'c1', ...dto });
-      const result = await controller.create(dto);
+      const result = await controller.create(dto, 'tenant-1');
       expect(result.id).toBe('c1');
-      expect(mockCategoryService.create).toHaveBeenCalledWith(dto);
+      expect(mockCategoryService.create).toHaveBeenCalledWith(dto, 'tenant-1');
     });
   });
 
@@ -63,27 +59,34 @@ describe('CategoryController', () => {
   describe('findOne', () => {
     it('should delegate to categoryService.findOne', async () => {
       mockCategoryService.findOne.mockResolvedValue({ id: 'c1' });
-      const result = await controller.findOne('c1');
+      const result = await controller.findOne('c1', 'tenant-1');
       expect(result).toEqual({ id: 'c1' });
-      expect(mockCategoryService.findOne).toHaveBeenCalledWith('c1');
+      expect(mockCategoryService.findOne).toHaveBeenCalledWith(
+        'c1',
+        'tenant-1',
+      );
     });
   });
 
   describe('update', () => {
     it('should delegate to categoryService.update', async () => {
       mockCategoryService.update.mockResolvedValue({ id: 'c1', name: 'Up' });
-      const result = await controller.update('c1', { name: 'Up' });
+      const result = await controller.update('c1', { name: 'Up' }, 'tenant-1');
       expect(result).toEqual({ id: 'c1', name: 'Up' });
-      expect(mockCategoryService.update).toHaveBeenCalledWith('c1', { name: 'Up' });
+      expect(mockCategoryService.update).toHaveBeenCalledWith(
+        'c1',
+        { name: 'Up' },
+        'tenant-1',
+      );
     });
   });
 
   describe('remove', () => {
     it('should delegate to categoryService.remove', async () => {
       mockCategoryService.remove.mockResolvedValue({ success: true });
-      const result = await controller.remove('c1');
+      const result = await controller.remove('c1', 'tenant-1');
       expect(result).toEqual({ success: true });
-      expect(mockCategoryService.remove).toHaveBeenCalledWith('c1');
+      expect(mockCategoryService.remove).toHaveBeenCalledWith('c1', 'tenant-1');
     });
   });
 });

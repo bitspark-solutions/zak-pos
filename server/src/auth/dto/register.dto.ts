@@ -27,4 +27,3 @@ export class RegisterDto {
   @IsString()
   role?: string;
 }
-

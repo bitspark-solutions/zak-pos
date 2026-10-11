@@ -87,7 +87,10 @@ export class UsersService {
         throw new NotFoundException(`User with ID ${id} not found`);
       }
 
-      const user = await prisma.user.update({ where: { id }, data: updateUserDto });
+      const user = await prisma.user.update({
+        where: { id },
+        data: updateUserDto,
+      });
       const { password, ...result } = user;
       return result;
     });

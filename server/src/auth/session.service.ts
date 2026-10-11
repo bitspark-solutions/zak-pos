@@ -35,7 +35,11 @@ export class SessionService {
     };
   }
 
-  async createSession(userId: string, deviceId: string, token: string): Promise<SessionInfo> {
+  async createSession(
+    userId: string,
+    deviceId: string,
+    token: string,
+  ): Promise<SessionInfo> {
     const now = new Date();
     const session: SessionInfo = {
       id: now.getTime().toString() + Math.random().toString(36).slice(2, 8),
@@ -48,18 +52,26 @@ export class SessionService {
       lastActivity: now,
     };
 
-    await this.redis.setJson(this.sessionKey(session.id), session, SESSION_TTL_SECONDS);
+    await this.redis.setJson(
+      this.sessionKey(session.id),
+      session,
+      SESSION_TTL_SECONDS,
+    );
     await this.redis.client.sadd(this.userSessionsKey(userId), session.id);
     return session;
   }
 
   async getSession(sessionId: string): Promise<SessionInfo | null> {
-    const raw = await this.redis.getJson<SessionInfo>(this.sessionKey(sessionId));
+    const raw = await this.redis.getJson<SessionInfo>(
+      this.sessionKey(sessionId),
+    );
     return raw ? this.revive(raw) : null;
   }
 
   async updateSessionActivity(sessionId: string): Promise<void> {
-    const raw = await this.redis.getJson<SessionInfo>(this.sessionKey(sessionId));
+    const raw = await this.redis.getJson<SessionInfo>(
+      this.sessionKey(sessionId),
+    );
     if (!raw) return;
 
     raw.lastActivity = new Date();
@@ -72,7 +84,9 @@ export class SessionService {
   }
 
   async revokeSession(sessionId: string): Promise<boolean> {
-    const raw = await this.redis.getJson<SessionInfo>(this.sessionKey(sessionId));
+    const raw = await this.redis.getJson<SessionInfo>(
+      this.sessionKey(sessionId),
+    );
     if (!raw) return false;
 
     raw.isActive = false;

@@ -4,7 +4,6 @@ import { DatabaseService } from '../database/database.service';
 
 describe('HealthController', () => {
   let controller: HealthController;
-  let databaseService: DatabaseService;
 
   const mockDatabaseService = {
     isConnected: jest.fn(),
@@ -15,20 +14,19 @@ describe('HealthController', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [HealthController],
-      providers: [
-        { provide: DatabaseService, useValue: mockDatabaseService },
-      ],
+      providers: [{ provide: DatabaseService, useValue: mockDatabaseService }],
     }).compile();
 
     controller = module.get<HealthController>(HealthController);
-    databaseService = module.get<DatabaseService>(DatabaseService);
     jest.clearAllMocks();
   });
 
   describe('checkHealth', () => {
     it('should return health payload with db info', async () => {
       mockDatabaseService.isConnected.mockResolvedValue(true);
-      mockDatabaseService.getConnectionInfo.mockReturnValue({ database: 'zakpos_dev' });
+      mockDatabaseService.getConnectionInfo.mockReturnValue({
+        database: 'zakpos_dev',
+      });
 
       const result = await controller.checkHealth();
       expect(result.status).toBe('ok');
@@ -47,7 +45,9 @@ describe('HealthController', () => {
     });
 
     it('should return error status on failure', async () => {
-      mockDatabaseService.testConnection.mockRejectedValue(new Error('Conn refused'));
+      mockDatabaseService.testConnection.mockRejectedValue(
+        new Error('Conn refused'),
+      );
 
       const result = await controller.checkDatabase();
       expect(result.status).toBe('error');

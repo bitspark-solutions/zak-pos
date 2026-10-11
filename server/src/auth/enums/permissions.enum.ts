@@ -4,29 +4,29 @@ export enum Permission {
   USER_READ = 'user:read',
   USER_UPDATE = 'user:update',
   USER_DELETE = 'user:delete',
-  
+
   // Product Management
   PRODUCT_CREATE = 'product:create',
   PRODUCT_READ = 'product:read',
   PRODUCT_UPDATE = 'product:update',
   PRODUCT_DELETE = 'product:delete',
-  
+
   // Inventory Management
   INVENTORY_CREATE = 'inventory:create',
   INVENTORY_READ = 'inventory:read',
   INVENTORY_UPDATE = 'inventory:update',
   INVENTORY_DELETE = 'inventory:delete',
-  
+
   // Sales Management
   SALE_CREATE = 'sale:create',
   SALE_READ = 'sale:read',
   SALE_UPDATE = 'sale:update',
   SALE_DELETE = 'sale:delete',
-  
+
   // Reporting
   REPORT_READ = 'report:read',
   REPORT_EXPORT = 'report:export',
-  
+
   // System Administration
   SYSTEM_ADMIN = 'system:admin',
   TENANT_MANAGE = 'tenant:manage',
@@ -42,8 +42,8 @@ export enum Permission {
 }
 
 export enum Role {
-  ADMIN = 'admin',     // Platform admin - manages tenants/owners
-  OWNER = 'owner',    // Business owner
+  ADMIN = 'admin', // Platform admin - manages tenants/owners
+  OWNER = 'owner', // Business owner
   MANAGER = 'manager', // Employee - manages products/orders
   CASHIER = 'cashier', // POS operator
 }
@@ -51,11 +51,11 @@ export enum Role {
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   [Role.ADMIN]: [
     // Admin manages tenants and owners - no operational permissions
-    Permission.USER_CREATE,     // Can create owners
+    Permission.USER_CREATE, // Can create owners
     Permission.USER_READ,
     Permission.USER_UPDATE,
     Permission.USER_DELETE,
-    Permission.TENANT_CREATE,   // Can create new tenants/companies
+    Permission.TENANT_CREATE, // Can create new tenants/companies
     Permission.TENANT_MANAGE,
     Permission.REPORT_READ,
     Permission.REPORT_EXPORT,
@@ -63,7 +63,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   ],
   [Role.OWNER]: [
     // Owner has all business permissions
-    Permission.USER_CREATE,      // Can create managers/cashiers
+    Permission.USER_CREATE, // Can create managers/cashiers
     Permission.USER_READ,
     Permission.USER_UPDATE,
     Permission.USER_DELETE,

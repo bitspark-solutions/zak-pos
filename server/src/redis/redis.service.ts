@@ -10,7 +10,9 @@ export class RedisService implements OnModuleDestroy {
     this.client = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
       maxRetriesPerRequest: 2,
     });
-    this.client.on('error', (err) => this.logger.error(`Redis error: ${err.message}`));
+    this.client.on('error', (err) =>
+      this.logger.error(`Redis error: ${err.message}`),
+    );
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -22,7 +24,11 @@ export class RedisService implements OnModuleDestroy {
     return raw ? (JSON.parse(raw) as T) : null;
   }
 
-  async setJson(key: string, value: unknown, ttlSeconds?: number): Promise<void> {
+  async setJson(
+    key: string,
+    value: unknown,
+    ttlSeconds?: number,
+  ): Promise<void> {
     const raw = JSON.stringify(value);
     if (ttlSeconds && ttlSeconds > 0) {
       await this.client.set(key, raw, 'EX', ttlSeconds);

@@ -99,7 +99,7 @@ export class AuthService {
       // tenant/role/status - both must agree before login succeeds.
       const userInfo = auth0Result.userInfo;
       const userEmail = userInfo.email;
-      let localUser = (await this.usersService.findByEmail(
+      const localUser = (await this.usersService.findByEmail(
         userEmail,
       )) as UserWithPassword | null;
 
@@ -291,14 +291,17 @@ export class AuthService {
     // rejects the direct grant (ROPG is disabled on new tenants).
     const passwordToStore = await bcrypt.hash(registerDto.password, 10);
 
-    const localUser = (await this.usersService.create({
-      email: registerDto.email,
-      name: registerDto.name,
-      password: passwordToStore,
-      role: userRole,
-      phone: registerDto.phone,
-      externalId: auth0UserId || undefined,
-    }, tenantId)) as UserWithPassword;
+    const localUser = (await this.usersService.create(
+      {
+        email: registerDto.email,
+        name: registerDto.name,
+        password: passwordToStore,
+        role: userRole,
+        phone: registerDto.phone,
+        externalId: auth0UserId || undefined,
+      },
+      tenantId,
+    )) as UserWithPassword;
 
     // Step 6: Generate JWT with full context
     const permissions = this.getUserPermissions(localUser.role);

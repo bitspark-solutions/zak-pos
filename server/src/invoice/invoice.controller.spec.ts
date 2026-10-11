@@ -7,7 +7,6 @@ import { PermissionsGuard } from '../auth/guards/permissions.guard';
 
 describe('InvoiceController', () => {
   let controller: InvoiceController;
-  let service: InvoiceService;
 
   const mockInvoiceService = {
     create: jest.fn(),
@@ -22,17 +21,17 @@ describe('InvoiceController', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [InvoiceController],
-      providers: [
-        { provide: InvoiceService, useValue: mockInvoiceService },
-      ],
+      providers: [{ provide: InvoiceService, useValue: mockInvoiceService }],
     })
-      .overrideGuard(JwtAuthGuard).useValue({ canActivate: () => true })
-      .overrideGuard(RolesGuard).useValue({ canActivate: () => true })
-      .overrideGuard(PermissionsGuard).useValue({ canActivate: () => true })
+      .overrideGuard(JwtAuthGuard)
+      .useValue({ canActivate: () => true })
+      .overrideGuard(RolesGuard)
+      .useValue({ canActivate: () => true })
+      .overrideGuard(PermissionsGuard)
+      .useValue({ canActivate: () => true })
       .compile();
 
     controller = module.get<InvoiceController>(InvoiceController);
-    service = module.get<InvoiceService>(InvoiceService);
     jest.clearAllMocks();
   });
 
@@ -44,54 +43,76 @@ describe('InvoiceController', () => {
     it('should delegate to invoiceService.create', async () => {
       const dto = { shopId: 's1' };
       mockInvoiceService.create.mockResolvedValue({ id: 'inv-1' });
-      const result = await controller.create(dto);
+      const result = await controller.create(dto, 'tenant-1', 'user-1');
       expect(result).toEqual({ id: 'inv-1' });
-      expect(mockInvoiceService.create).toHaveBeenCalledWith(dto, 'system');
+      expect(mockInvoiceService.create).toHaveBeenCalledWith(
+        dto,
+        'user-1',
+        'tenant-1',
+      );
     });
   });
 
   describe('findAll', () => {
     it('should delegate to invoiceService.findAll', async () => {
       mockInvoiceService.findAll.mockResolvedValue([]);
-      const result = await controller.findAll({});
+      const result = await controller.findAll({}, 'tenant-1');
       expect(result).toEqual([]);
-      expect(mockInvoiceService.findAll).toHaveBeenCalledWith({});
+      expect(mockInvoiceService.findAll).toHaveBeenCalledWith({}, 'tenant-1');
     });
   });
 
   describe('findOne', () => {
     it('should delegate to invoiceService.findOne', async () => {
       mockInvoiceService.findOne.mockResolvedValue({ id: 'inv-1' });
-      const result = await controller.findOne('inv-1');
+      const result = await controller.findOne('inv-1', 'tenant-1');
       expect(result).toEqual({ id: 'inv-1' });
-      expect(mockInvoiceService.findOne).toHaveBeenCalledWith('inv-1');
+      expect(mockInvoiceService.findOne).toHaveBeenCalledWith(
+        'inv-1',
+        'tenant-1',
+      );
     });
   });
 
   describe('send', () => {
     it('should delegate to invoiceService.send', async () => {
-      mockInvoiceService.send.mockResolvedValue({ id: 'inv-1', status: 'sent' });
-      const result = await controller.send('inv-1');
+      mockInvoiceService.send.mockResolvedValue({
+        id: 'inv-1',
+        status: 'sent',
+      });
+      const result = await controller.send('inv-1', 'tenant-1');
       expect(result).toEqual({ id: 'inv-1', status: 'sent' });
-      expect(mockInvoiceService.send).toHaveBeenCalledWith('inv-1');
+      expect(mockInvoiceService.send).toHaveBeenCalledWith('inv-1', 'tenant-1');
     });
   });
 
   describe('confirm', () => {
     it('should delegate to invoiceService.confirm', async () => {
-      mockInvoiceService.confirm.mockResolvedValue({ id: 'inv-1', status: 'confirmed' });
-      const result = await controller.confirm('inv-1');
+      mockInvoiceService.confirm.mockResolvedValue({
+        id: 'inv-1',
+        status: 'confirmed',
+      });
+      const result = await controller.confirm('inv-1', 'tenant-1');
       expect(result).toEqual({ id: 'inv-1', status: 'confirmed' });
-      expect(mockInvoiceService.confirm).toHaveBeenCalledWith('inv-1');
+      expect(mockInvoiceService.confirm).toHaveBeenCalledWith(
+        'inv-1',
+        'tenant-1',
+      );
     });
   });
 
   describe('cancel', () => {
     it('should delegate to invoiceService.cancel', async () => {
-      mockInvoiceService.cancel.mockResolvedValue({ id: 'inv-1', status: 'cancelled' });
-      const result = await controller.cancel('inv-1');
+      mockInvoiceService.cancel.mockResolvedValue({
+        id: 'inv-1',
+        status: 'cancelled',
+      });
+      const result = await controller.cancel('inv-1', 'tenant-1');
       expect(result).toEqual({ id: 'inv-1', status: 'cancelled' });
-      expect(mockInvoiceService.cancel).toHaveBeenCalledWith('inv-1');
+      expect(mockInvoiceService.cancel).toHaveBeenCalledWith(
+        'inv-1',
+        'tenant-1',
+      );
     });
   });
 });

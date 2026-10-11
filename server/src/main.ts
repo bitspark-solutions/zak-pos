@@ -10,9 +10,13 @@ async function bootstrap() {
 
   // Enable CORS
   const corsOrigin = process.env.CORS_ORIGIN;
-  const allowedOrigins = corsOrigin === '*'
-    ? true // Allow all origins
-    : corsOrigin?.split(',').map(o => o.trim()) || ['http://localhost:41923', 'http://localhost:96140'];
+  const allowedOrigins =
+    corsOrigin === '*'
+      ? true // Allow all origins
+      : corsOrigin?.split(',').map((o) => o.trim()) || [
+          'http://localhost:41923',
+          'http://localhost:96140',
+        ];
 
   app.enableCors({
     origin: allowedOrigins,
@@ -43,12 +47,17 @@ async function bootstrap() {
     await databaseService.testConnection();
     logger.log('🚀 Application started successfully with database connection!');
   } catch (error) {
-    logger.error('❌ Application started but database connection failed:', error.message);
+    logger.error(
+      '❌ Application started but database connection failed:',
+      error instanceof Error ? error.message : String(error),
+    );
   }
 
   const port = process.env.API_PORT || process.env.PORT || 3000;
   await app.listen(port);
   logger.log(`🌐 Application is running on: http://localhost:${port}`);
-  logger.log(`📚 API Documentation: http://localhost:${port}/${apiPrefix}/docs`);
+  logger.log(
+    `📚 API Documentation: http://localhost:${port}/${apiPrefix}/docs`,
+  );
 }
-bootstrap();
+void bootstrap();

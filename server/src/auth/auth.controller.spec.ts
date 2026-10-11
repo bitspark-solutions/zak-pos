@@ -7,11 +7,10 @@ import { UsersService } from '../users/users.service';
 import { DatabaseService } from '../database/database.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
-import { Request } from 'express';
+import type { AuthenticatedRequest } from './interfaces/auth-user.interface';
 
 describe('AuthController', () => {
   let controller: AuthController;
-  let authService: AuthService;
 
   const mockAuthService = {
     login: jest.fn(),
@@ -63,7 +62,9 @@ describe('AuthController', () => {
           provide: DatabaseService,
           useValue: {
             getPrisma: jest.fn().mockReturnValue({
-              prisma: { user: { update: jest.fn().mockResolvedValue(undefined) } },
+              prisma: {
+                user: { update: jest.fn().mockResolvedValue(undefined) },
+              },
             }),
           },
         },
@@ -71,7 +72,6 @@ describe('AuthController', () => {
     }).compile();
 
     controller = module.get<AuthController>(AuthController);
-    authService = module.get<AuthService>(AuthService);
   });
 
   afterEach(() => {
@@ -111,7 +111,9 @@ describe('AuthController', () => {
 
       mockAuthService.login.mockRejectedValue(new Error('Invalid credentials'));
 
-      await expect(controller.login(loginDto)).rejects.toThrow('Invalid credentials');
+      await expect(controller.login(loginDto)).rejects.toThrow(
+        'Invalid credentials',
+      );
     });
   });
 
@@ -148,9 +150,13 @@ describe('AuthController', () => {
         name: 'Existing User',
       };
 
-      mockAuthService.register.mockRejectedValue(new Error('User already exists'));
+      mockAuthService.register.mockRejectedValue(
+        new Error('User already exists'),
+      );
 
-      await expect(controller.register(registerDto)).rejects.toThrow('User already exists');
+      await expect(controller.register(registerDto)).rejects.toThrow(
+        'User already exists',
+      );
     });
   });
 
@@ -168,7 +174,7 @@ describe('AuthController', () => {
       };
       const mockRequest = {
         user: { ...mockUser, permissions: [] },
-      } as Request;
+      } as unknown as AuthenticatedRequest;
 
       mockUsersService.findOne.mockResolvedValue(mockUser);
 
@@ -181,20 +187,20 @@ describe('AuthController', () => {
   });
 
   describe('refresh', () => {
-    it('should return refresh success message', async () => {
+    it('should return refresh success message', () => {
       const mockRequest = {
         user: { id: '1' },
-      } as Request;
+      } as unknown as AuthenticatedRequest;
 
-      const result = await controller.refresh(mockRequest);
+      const result = controller.refresh(mockRequest);
 
       expect(result).toEqual({ message: 'Token refreshed successfully' });
     });
   });
 
   describe('logout', () => {
-    it('should return success message', async () => {
-      const result = await controller.logout();
+    it('should return success message', () => {
+      const result = controller.logout();
 
       expect(result).toEqual({ message: 'Logged out successfully' });
     });

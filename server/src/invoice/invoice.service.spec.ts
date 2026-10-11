@@ -8,20 +8,20 @@ describe('InvoiceService', () => {
 
   const mockPrisma = {
     invoice: {
-      findUnique: jest.fn(),
-      findMany: jest.fn(),
       findFirst: jest.fn(),
+      findMany: jest.fn(),
       count: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
     },
     sale: {
-      findUnique: jest.fn(),
+      findFirst: jest.fn(),
     },
   };
 
   const mockDatabaseService = {
     getPrisma: jest.fn().mockReturnValue({ prisma: mockPrisma }),
+    withTenant: jest.fn((tenantId: string, fn: any) => fn(mockPrisma)),
   };
 
   const sampleInvoice = {
@@ -45,6 +45,9 @@ describe('InvoiceService', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     mockDatabaseService.getPrisma.mockReturnValue({ prisma: mockPrisma });
+    mockDatabaseService.withTenant.mockImplementation(
+      (tenantId: string, fn: any) => fn(mockPrisma),
+    );
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -58,7 +61,7 @@ describe('InvoiceService', () => {
 
   describe('create', () => {
     it('should create an invoice linking sale data if saleId provided', async () => {
-      mockPrisma.sale.findUnique.mockResolvedValue({
+      mockPrisma.sale.findFirst.mockResolvedValue({
         id: 'sale-1',
         subtotal: 100,
         tax: 15,
@@ -74,15 +77,25 @@ describe('InvoiceService', () => {
           customerId: 'cust-1',
         },
         'user-1',
+        'tenant-1',
       );
 
       expect(result.id).toBe('inv-1');
       expect(result.invoiceNumber).toBe('INV-20260913-0001');
       expect(result.total).toBe(115);
+      expect(mockDatabaseService.withTenant).toHaveBeenCalledWith(
+        'tenant-1',
+        expect.any(Function),
+      );
+      expect(mockPrisma.sale.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'sale-1', tenantId: 'tenant-1' },
+        }),
+      );
     });
 
     it('should throw NotFoundException if linked sale is not found', async () => {
-      mockPrisma.sale.findUnique.mockResolvedValue(null);
+      mockPrisma.sale.findFirst.mockResolvedValue(null);
 
       await expect(
         service.create(
@@ -91,6 +104,7 @@ describe('InvoiceService', () => {
             saleId: 'non-existent',
           },
           'user-1',
+          'tenant-1',
         ),
       ).rejects.toThrow(NotFoundException);
     });
@@ -98,28 +112,38 @@ describe('InvoiceService', () => {
 
   describe('findOne and findAll', () => {
     it('should return invoice by ID', async () => {
-      mockPrisma.invoice.findUnique.mockResolvedValue(sampleInvoice);
-      const result = await service.findOne('inv-1');
+      mockPrisma.invoice.findFirst.mockResolvedValue(sampleInvoice);
+      const result = await service.findOne('inv-1', 'tenant-1');
       expect(result.id).toBe('inv-1');
+      expect(mockPrisma.invoice.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'inv-1', tenantId: 'tenant-1' },
+        }),
+      );
     });
 
     it('should throw NotFoundException if invoice not found by ID', async () => {
-      mockPrisma.invoice.findUnique.mockResolvedValue(null);
-      await expect(service.findOne('inv-999')).rejects.toThrow(NotFoundException);
+      mockPrisma.invoice.findFirst.mockResolvedValue(null);
+      await expect(service.findOne('inv-999', 'tenant-1')).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('should return paginated invoices from findAll', async () => {
       mockPrisma.invoice.findMany.mockResolvedValue([sampleInvoice]);
       mockPrisma.invoice.count.mockResolvedValue(1);
-      const result = await service.findAll({ page: 1, limit: 10 });
+      const result = await service.findAll({ page: 1, limit: 10 }, 'tenant-1');
       expect(result.data).toHaveLength(1);
       expect(result.total).toBe(1);
+      expect(mockPrisma.invoice.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { tenantId: 'tenant-1' } }),
+      );
     });
   });
 
   describe('status transitions: send, confirm, cancel', () => {
     it('should transition draft invoice to sent', async () => {
-      mockPrisma.invoice.findUnique.mockResolvedValue({
+      mockPrisma.invoice.findFirst.mockResolvedValue({
         ...sampleInvoice,
         status: 'draft',
       });
@@ -128,21 +152,23 @@ describe('InvoiceService', () => {
         status: 'sent',
       });
 
-      const result = await service.send('inv-1');
+      const result = await service.send('inv-1', 'tenant-1');
       expect(result.status).toBe('sent');
     });
 
     it('should throw BadRequestException if trying to send paid invoice', async () => {
-      mockPrisma.invoice.findUnique.mockResolvedValue({
+      mockPrisma.invoice.findFirst.mockResolvedValue({
         ...sampleInvoice,
         status: 'paid',
       });
 
-      await expect(service.send('inv-1')).rejects.toThrow(BadRequestException);
+      await expect(service.send('inv-1', 'tenant-1')).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('should transition sent invoice to confirmed', async () => {
-      mockPrisma.invoice.findUnique.mockResolvedValue({
+      mockPrisma.invoice.findFirst.mockResolvedValue({
         ...sampleInvoice,
         status: 'sent',
       });
@@ -151,12 +177,12 @@ describe('InvoiceService', () => {
         status: 'confirmed',
       });
 
-      const result = await service.confirm('inv-1');
+      const result = await service.confirm('inv-1', 'tenant-1');
       expect(result.status).toBe('confirmed');
     });
 
     it('should cancel invoice if not paid', async () => {
-      mockPrisma.invoice.findUnique.mockResolvedValue({
+      mockPrisma.invoice.findFirst.mockResolvedValue({
         ...sampleInvoice,
         status: 'sent',
       });
@@ -165,17 +191,19 @@ describe('InvoiceService', () => {
         status: 'cancelled',
       });
 
-      const result = await service.cancel('inv-1');
+      const result = await service.cancel('inv-1', 'tenant-1');
       expect(result.status).toBe('cancelled');
     });
 
     it('should throw BadRequestException when cancelling a paid invoice', async () => {
-      mockPrisma.invoice.findUnique.mockResolvedValue({
+      mockPrisma.invoice.findFirst.mockResolvedValue({
         ...sampleInvoice,
         status: 'paid',
       });
 
-      await expect(service.cancel('inv-1')).rejects.toThrow(BadRequestException);
+      await expect(service.cancel('inv-1', 'tenant-1')).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 });

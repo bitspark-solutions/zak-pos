@@ -18,7 +18,10 @@ describe('Auth0Service', () => {
 
   describe('validateUser', () => {
     it('should return null for invalid credentials', async () => {
-      const result = await service.validateUser('invalid@example.com', 'wrongpassword');
+      const result = await service.validateUser(
+        'invalid@example.com',
+        'wrongpassword',
+      );
       expect(result).toBeNull();
     });
 
@@ -35,7 +38,7 @@ describe('Auth0Service', () => {
         password: 'password123',
         name: 'Test User',
         role: 'cashier',
-        tenantId: 'tenant-1'
+        tenantId: 'tenant-1',
       };
 
       try {
@@ -55,7 +58,9 @@ describe('Auth0Service', () => {
 
   describe('updateUser', () => {
     it('should handle Auth0 API errors gracefully', async () => {
-      const result = await service.updateUser('user-id', { name: 'Updated Name' });
+      const result = await service.updateUser('user-id', {
+        name: 'Updated Name',
+      });
       expect(result).toBeNull();
     });
   });
@@ -86,7 +91,7 @@ describe('Auth0Service', () => {
       const roleData = {
         name: 'test-role',
         description: 'Test role',
-        permissions: ['read:users']
+        permissions: ['read:users'],
       };
 
       const result = await service.createRole(roleData);

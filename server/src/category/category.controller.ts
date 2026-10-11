@@ -11,7 +11,11 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { CategoryService } from './category.service';
-import type { CreateCategoryDto, UpdateCategoryDto, CategoryTreeNode } from './category.service';
+import type {
+  CreateCategoryDto,
+  UpdateCategoryDto,
+  CategoryTreeNode,
+} from './category.service';
 import type { ICategory } from './interfaces/category.interface';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -47,7 +51,9 @@ export class CategoryController {
   @Get('tree')
   @Roles(Role.OWNER, Role.MANAGER, Role.CASHIER)
   @RequirePermissions(Permission.PRODUCT_READ)
-  async findTree(@CurrentTenant() tenantId: string): Promise<CategoryTreeNode[]> {
+  async findTree(
+    @CurrentTenant() tenantId: string,
+  ): Promise<CategoryTreeNode[]> {
     return this.categoryService.findTree(tenantId);
   }
 

@@ -4,7 +4,6 @@ import { ProductService } from './product.service';
 
 describe('ProductController', () => {
   let controller: ProductController;
-  let service: ProductService;
 
   const mockProductService = {
     create: jest.fn(),
@@ -18,13 +17,10 @@ describe('ProductController', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ProductController],
-      providers: [
-        { provide: ProductService, useValue: mockProductService },
-      ],
+      providers: [{ provide: ProductService, useValue: mockProductService }],
     }).compile();
 
     controller = module.get<ProductController>(ProductController);
-    service = module.get<ProductService>(ProductService);
     jest.clearAllMocks();
   });
 
@@ -37,20 +33,32 @@ describe('ProductController', () => {
       const dto = { name: 'P1', sku: 'SKU1', basePrice: 100 };
       mockProductService.create.mockResolvedValue({ id: 'p1', ...dto });
 
-      const result = await controller.create(dto);
+      const result = await controller.create(dto, 'tenant-1');
       expect(result.id).toBe('p1');
-      expect(mockProductService.create).toHaveBeenCalledWith(dto);
+      expect(mockProductService.create).toHaveBeenCalledWith(dto, 'tenant-1');
     });
   });
 
   describe('findAll', () => {
     it('should delegate to productService.findAll', async () => {
-      const mockResult = { data: [], total: 0, page: 1, limit: 10, totalPages: 0 };
+      const mockResult = {
+        data: [],
+        total: 0,
+        page: 1,
+        limit: 10,
+        totalPages: 0,
+      };
       mockProductService.findAll.mockResolvedValue(mockResult);
 
-      const result = await controller.findAll({ page: 1, limit: 10 });
+      const result = await controller.findAll(
+        { page: 1, limit: 10 },
+        'tenant-1',
+      );
       expect(result).toEqual(mockResult);
-      expect(mockProductService.findAll).toHaveBeenCalledWith({ page: 1, limit: 10 }, undefined);
+      expect(mockProductService.findAll).toHaveBeenCalledWith(
+        { page: 1, limit: 10 },
+        'tenant-1',
+      );
     });
   });
 
@@ -58,9 +66,12 @@ describe('ProductController', () => {
     it('should delegate to productService.findByBarcode', async () => {
       mockProductService.findByBarcode.mockResolvedValue({ id: 'p1' });
 
-      const result = await controller.findByBarcode('123456');
+      const result = await controller.findByBarcode('123456', 'tenant-1');
       expect(result).toEqual({ id: 'p1' });
-      expect(mockProductService.findByBarcode).toHaveBeenCalledWith('123456', undefined);
+      expect(mockProductService.findByBarcode).toHaveBeenCalledWith(
+        '123456',
+        'tenant-1',
+      );
     });
   });
 
@@ -68,19 +79,30 @@ describe('ProductController', () => {
     it('should delegate to productService.findOne', async () => {
       mockProductService.findOne.mockResolvedValue({ id: 'p1' });
 
-      const result = await controller.findOne('p1');
+      const result = await controller.findOne('p1', 'tenant-1');
       expect(result).toEqual({ id: 'p1' });
-      expect(mockProductService.findOne).toHaveBeenCalledWith('p1');
+      expect(mockProductService.findOne).toHaveBeenCalledWith('p1', 'tenant-1');
     });
   });
 
   describe('update', () => {
     it('should delegate to productService.update', async () => {
-      mockProductService.update.mockResolvedValue({ id: 'p1', name: 'Updated' });
+      mockProductService.update.mockResolvedValue({
+        id: 'p1',
+        name: 'Updated',
+      });
 
-      const result = await controller.update('p1', { name: 'Updated' });
+      const result = await controller.update(
+        'p1',
+        { name: 'Updated' },
+        'tenant-1',
+      );
       expect(result).toEqual({ id: 'p1', name: 'Updated' });
-      expect(mockProductService.update).toHaveBeenCalledWith('p1', { name: 'Updated' });
+      expect(mockProductService.update).toHaveBeenCalledWith(
+        'p1',
+        { name: 'Updated' },
+        'tenant-1',
+      );
     });
   });
 
@@ -88,9 +110,9 @@ describe('ProductController', () => {
     it('should delegate to productService.remove', async () => {
       mockProductService.remove.mockResolvedValue({ success: true });
 
-      const result = await controller.remove('p1');
+      const result = await controller.remove('p1', 'tenant-1');
       expect(result).toEqual({ success: true });
-      expect(mockProductService.remove).toHaveBeenCalledWith('p1');
+      expect(mockProductService.remove).toHaveBeenCalledWith('p1', 'tenant-1');
     });
   });
 });

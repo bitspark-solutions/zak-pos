@@ -32,8 +32,6 @@ import { InvoiceModule } from './invoice/invoice.module';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer
-      .apply(DatabaseConnectionMiddleware)
-      .forRoutes('*');
+    consumer.apply(DatabaseConnectionMiddleware).forRoutes('*');
   }
 }

@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { JwtModule } from '@nestjs/jwt';
+import { JwtModule, type JwtSignOptions } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
@@ -21,11 +21,30 @@ import { DatabaseModule } from '../database/database.module';
     PassportModule,
     JwtModule.register({
       secret: process.env.JWT_SECRET || 'your-secret-key',
-      signOptions: { expiresIn: (process.env.JWT_EXPIRES_IN || '7d') as any },
+      signOptions: {
+        expiresIn: (process.env.JWT_EXPIRES_IN ||
+          '7d') as JwtSignOptions['expiresIn'],
+      },
     }),
   ],
-  providers: [AuthService, Auth0Service, JwtStrategy, LocalStrategy, RolesGuard, PermissionsGuard, DeviceService, SessionService, TenantService],
+  providers: [
+    AuthService,
+    Auth0Service,
+    JwtStrategy,
+    LocalStrategy,
+    RolesGuard,
+    PermissionsGuard,
+    DeviceService,
+    SessionService,
+    TenantService,
+  ],
   controllers: [AuthController],
-  exports: [AuthService, RolesGuard, PermissionsGuard, SessionService, TenantService],
+  exports: [
+    AuthService,
+    RolesGuard,
+    PermissionsGuard,
+    SessionService,
+    TenantService,
+  ],
 })
 export class AuthModule {}

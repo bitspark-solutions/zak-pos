@@ -11,7 +11,7 @@ module.exports = {
   ],
   testPathIgnorePatterns: [
     '/node_modules/',
-    'performance.spec.ts',  // Performance tests require full infrastructure
+    'performance.spec.ts', // Performance tests require full infrastructure
   ],
   collectCoverageFrom: [
     'src/**/*.ts',

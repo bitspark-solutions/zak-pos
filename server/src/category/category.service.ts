@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
+import type { Category } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import { ICategory } from './interfaces/category.interface';
 
@@ -20,7 +25,10 @@ export interface CategoryTreeNode extends ICategory {
 export class CategoryService {
   constructor(private readonly databaseService: DatabaseService) {}
 
-  async create(createCategoryDto: CreateCategoryDto, tenantId: string): Promise<ICategory> {
+  async create(
+    createCategoryDto: CreateCategoryDto,
+    tenantId: string,
+  ): Promise<ICategory> {
     // All reads and writes share one RLS-scoped transaction.
     return this.databaseService.withTenant(tenantId, async (prisma) => {
       // Build path
@@ -49,13 +57,15 @@ export class CategoryService {
   }
 
   async findAll(tenantId: string): Promise<ICategory[]> {
-    const categories = await this.databaseService.withTenant(tenantId, (prisma) =>
-      prisma.category.findMany({
-        where: {
-          tenantId,
-        },
-        orderBy: { path: 'asc' },
-      }),
+    const categories = await this.databaseService.withTenant(
+      tenantId,
+      (prisma) =>
+        prisma.category.findMany({
+          where: {
+            tenantId,
+          },
+          orderBy: { path: 'asc' },
+        }),
     );
 
     return categories.map((c) => this.mapToCategory(c));
@@ -80,10 +90,16 @@ export class CategoryService {
     return this.mapToCategory(category);
   }
 
-  async update(id: string, updateCategoryDto: UpdateCategoryDto, tenantId: string): Promise<ICategory> {
+  async update(
+    id: string,
+    updateCategoryDto: UpdateCategoryDto,
+    tenantId: string,
+  ): Promise<ICategory> {
     // Validation read + path rebuild + update share one RLS-scoped transaction.
     return this.databaseService.withTenant(tenantId, async (prisma) => {
-      const existing = await prisma.category.findFirst({ where: { id, tenantId } });
+      const existing = await prisma.category.findFirst({
+        where: { id, tenantId },
+      });
       if (!existing) {
         throw new NotFoundException(`Category with ID ${id} not found`);
       }
@@ -107,7 +123,10 @@ export class CategoryService {
           path = `${parent.path}/${name.toLowerCase().replace(/\s+/g, '-')}`;
         }
       } else if (updateCategoryDto.name) {
-        const parentPath = existing.path.substring(0, existing.path.lastIndexOf('/'));
+        const parentPath = existing.path.substring(
+          0,
+          existing.path.lastIndexOf('/'),
+        );
         path = parentPath
           ? `${parentPath}/${updateCategoryDto.name.toLowerCase().replace(/\s+/g, '-')}`
           : updateCategoryDto.name.toLowerCase().replace(/\s+/g, '-');
@@ -128,7 +147,9 @@ export class CategoryService {
   async remove(id: string, tenantId: string): Promise<{ success: boolean }> {
     // Existence check + children/products guards + delete share one RLS-scoped transaction.
     return this.databaseService.withTenant(tenantId, async (prisma) => {
-      const existing = await prisma.category.findFirst({ where: { id, tenantId } });
+      const existing = await prisma.category.findFirst({
+        where: { id, tenantId },
+      });
       if (!existing) {
         throw new NotFoundException(`Category with ID ${id} not found`);
       }
@@ -139,7 +160,9 @@ export class CategoryService {
       });
 
       if (children.length > 0) {
-        throw new ConflictException('Cannot delete category with children. Delete children first.');
+        throw new ConflictException(
+          'Cannot delete category with children. Delete children first.',
+        );
       }
 
       // Check for products
@@ -148,7 +171,9 @@ export class CategoryService {
       });
 
       if (products > 0) {
-        throw new ConflictException('Cannot delete category with products. Remove products first.');
+        throw new ConflictException(
+          'Cannot delete category with products. Remove products first.',
+        );
       }
 
       await prisma.category.delete({ where: { id } });
@@ -178,7 +203,7 @@ export class CategoryService {
     return roots;
   }
 
-  private mapToCategory(category: any): ICategory {
+  private mapToCategory(category: Category): ICategory {
     return {
       id: category.id,
       tenantId: category.tenantId,

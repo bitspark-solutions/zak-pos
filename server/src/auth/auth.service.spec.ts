@@ -9,9 +9,6 @@ import * as bcrypt from 'bcryptjs';
 
 describe('AuthService', () => {
   let service: AuthService;
-  let usersService: UsersService;
-  let jwtService: JwtService;
-  let auth0Service: Auth0Service;
 
   const mockUser = {
     id: '1',
@@ -89,9 +86,6 @@ describe('AuthService', () => {
     }).compile();
 
     service = module.get<AuthService>(AuthService);
-    usersService = module.get<UsersService>(UsersService);
-    jwtService = module.get<JwtService>(JwtService);
-    auth0Service = module.get<Auth0Service>(Auth0Service);
   });
 
   afterEach(() => {
@@ -110,7 +104,7 @@ describe('AuthService', () => {
           sub: 'auth0|123456789',
           email: email,
           name: 'Test User',
-        }
+        },
       };
 
       mockAuth0Service.validateUser.mockResolvedValue(auth0User);
@@ -118,7 +112,10 @@ describe('AuthService', () => {
 
       const result = await service.validateUser(email, password);
 
-      expect(mockAuth0Service.validateUser).toHaveBeenCalledWith(email, password);
+      expect(mockAuth0Service.validateUser).toHaveBeenCalledWith(
+        email,
+        password,
+      );
       expect(mockUsersService.findByEmail).toHaveBeenCalledWith(email);
       expect(mockPrisma.user.update).toHaveBeenCalledWith({
         where: { id: mockUser.id },
@@ -131,16 +128,22 @@ describe('AuthService', () => {
         role: mockUser.role,
         tenantId: mockUser.tenantId,
         auth0Id: auth0User.userInfo.sub,
-        permissions: expect.any(Array)
+        permissions: expect.any(Array),
       });
     });
 
     it('should return null when Auth0 validation fails', async () => {
       mockAuth0Service.validateUser.mockResolvedValue(null);
 
-      const result = await service.validateUser('test@example.com', 'wrongpassword');
+      const result = await service.validateUser(
+        'test@example.com',
+        'wrongpassword',
+      );
 
-      expect(mockAuth0Service.validateUser).toHaveBeenCalledWith('test@example.com', 'wrongpassword');
+      expect(mockAuth0Service.validateUser).toHaveBeenCalledWith(
+        'test@example.com',
+        'wrongpassword',
+      );
       expect(result).toBeNull();
     });
 
@@ -155,7 +158,7 @@ describe('AuthService', () => {
           sub: 'auth0|123456789',
           email: email,
           name: 'Test User',
-        }
+        },
       };
 
       mockAuth0Service.validateUser.mockResolvedValue(auth0User);
@@ -184,7 +187,6 @@ describe('AuthService', () => {
         'User account is disabled',
       );
     });
-
   });
 
   describe('login', () => {
@@ -207,7 +209,7 @@ describe('AuthService', () => {
           sub: 'auth0|123456789',
           email: loginDto.email,
           name: 'Test User',
-        }
+        },
       };
       const mockToken = 'mock-jwt-token';
 
@@ -245,7 +247,7 @@ describe('AuthService', () => {
         password: 'password123',
         name: 'New User',
         role: 'cashier',
-        tenantId: 'tenant-1'
+        tenantId: 'tenant-1',
       };
       const createdUser = {
         id: '2',
@@ -264,7 +266,10 @@ describe('AuthService', () => {
       };
       const mockToken = 'mock-jwt-token';
 
-      mockTenantService.ensureTenant.mockResolvedValue({ tenantId: 'tenant-1', shopId: 'shop-1' });
+      mockTenantService.ensureTenant.mockResolvedValue({
+        tenantId: 'tenant-1',
+        shopId: 'shop-1',
+      });
       mockUsersService.findByEmail.mockResolvedValue(null);
       mockAuth0Service.createUser.mockResolvedValue(auth0User);
       mockUsersService.create.mockResolvedValue(createdUser);
@@ -273,13 +278,15 @@ describe('AuthService', () => {
       const result = await service.register(registerDto);
 
       expect(mockTenantService.ensureTenant).toHaveBeenCalledWith('tenant-1');
-      expect(mockUsersService.findByEmail).toHaveBeenCalledWith(registerDto.email);
+      expect(mockUsersService.findByEmail).toHaveBeenCalledWith(
+        registerDto.email,
+      );
       expect(mockAuth0Service.createUser).toHaveBeenCalledWith({
         email: registerDto.email,
         password: registerDto.password,
         name: registerDto.name,
         role: registerDto.role,
-        tenantId: registerDto.tenantId
+        tenantId: registerDto.tenantId,
       });
       expect(mockUsersService.create).toHaveBeenCalledWith(
         {
@@ -306,7 +313,7 @@ describe('AuthService', () => {
           role: createdUser.role,
           tenantId: createdUser.tenantId,
           shopId: 'shop-1',
-          permissions: expect.any(Array)
+          permissions: expect.any(Array),
         },
       });
     });
@@ -355,7 +362,11 @@ describe('AuthService', () => {
         'tenant-new',
       );
       expect(result.user).toEqual(
-        expect.objectContaining({ tenantId: 'tenant-new', shopId: 'shop-new', role: 'owner' }),
+        expect.objectContaining({
+          tenantId: 'tenant-new',
+          shopId: 'shop-new',
+          role: 'owner',
+        }),
       );
     });
 
@@ -369,7 +380,9 @@ describe('AuthService', () => {
       };
 
       mockUsersService.findByEmail.mockResolvedValue(null);
-      mockTenantService.ensureTenant.mockRejectedValue(new Error('Tenant does not exist'));
+      mockTenantService.ensureTenant.mockRejectedValue(
+        new Error('Tenant does not exist'),
+      );
 
       await expect(service.register(registerDto)).rejects.toThrow(
         'Unknown tenant does-not-exist',
@@ -383,7 +396,7 @@ describe('AuthService', () => {
         password: 'password123',
         name: 'New User',
         role: 'cashier',
-        tenantId: 'tenant-1'
+        tenantId: 'tenant-1',
       };
       const createdUser = {
         id: '2',
@@ -394,9 +407,14 @@ describe('AuthService', () => {
       };
 
       mockUsersService.findByEmail.mockResolvedValue(null);
-      mockTenantService.ensureTenant.mockResolvedValue({ tenantId: 'tenant-1', shopId: 'shop-1' });
+      mockTenantService.ensureTenant.mockResolvedValue({
+        tenantId: 'tenant-1',
+        shopId: 'shop-1',
+      });
       // Make Auth0 fail so it falls back to local password hashing
-      mockAuth0Service.createUser.mockRejectedValue(new Error('Management API not enabled'));
+      mockAuth0Service.createUser.mockRejectedValue(
+        new Error('Management API not enabled'),
+      );
       mockUsersService.create.mockResolvedValue(createdUser);
       mockJwtService.sign.mockReturnValue('mock-token');
 
@@ -404,7 +422,9 @@ describe('AuthService', () => {
 
       const createCall = mockUsersService.create.mock.calls[0][0];
       expect(createCall.password).not.toBe(registerDto.password);
-      expect(await bcrypt.compare(registerDto.password, createCall.password)).toBe(true);
+      expect(
+        await bcrypt.compare(registerDto.password, createCall.password),
+      ).toBe(true);
     });
   });
 
@@ -433,7 +453,9 @@ describe('AuthService', () => {
         throw new Error('Invalid token');
       });
 
-      await expect(service.validateToken(invalidToken)).rejects.toThrow('Invalid token');
+      await expect(service.validateToken(invalidToken)).rejects.toThrow(
+        'Invalid token',
+      );
     });
   });
 });

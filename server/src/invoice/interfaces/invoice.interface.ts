@@ -16,7 +16,12 @@ export interface IInvoice {
   updatedAt: Date;
 }
 
-export type InvoiceStatus = 'draft' | 'sent' | 'confirmed' | 'paid' | 'cancelled';
+export type InvoiceStatus =
+  | 'draft'
+  | 'sent'
+  | 'confirmed'
+  | 'paid'
+  | 'cancelled';
 
 export interface IInvoiceWithDetails extends IInvoice {
   shop?: {

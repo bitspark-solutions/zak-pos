@@ -1,4 +1,11 @@
-import { IsString, IsOptional, IsNumber, IsDateString, IsEnum, Min } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsNumber,
+  IsDateString,
+  IsEnum,
+  Min,
+} from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import type { InvoiceStatus } from '../interfaces/invoice.interface';
 
@@ -65,14 +72,14 @@ export class InvoiceQueryDto {
 
   @IsNumber()
   @IsOptional()
-  @Transform(({ value }) => parseInt(value))
+  @Transform(({ value }: { value: unknown }) => parseInt(String(value), 10))
   @Type(() => Number)
   page?: number = 1;
 
   @IsNumber()
   @IsOptional()
   @Min(1)
-  @Transform(({ value }) => parseInt(value))
+  @Transform(({ value }: { value: unknown }) => parseInt(String(value), 10))
   @Type(() => Number)
   limit?: number = 20;
 }

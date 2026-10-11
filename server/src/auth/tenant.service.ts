@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 
 export const DEFAULT_ACCOUNTS = [
@@ -69,7 +70,10 @@ export class TenantService {
   }
 
   // Idempotent chart-of-accounts seeding; pass the caller's transaction when inside one
-  async seedAccounts(tx: any, tenantId: string): Promise<Map<string, string>> {
+  async seedAccounts(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+  ): Promise<Map<string, string>> {
     const map = new Map<string, string>();
     for (const acc of DEFAULT_ACCOUNTS) {
       const account = await tx.account.upsert({

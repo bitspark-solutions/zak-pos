@@ -1,14 +1,42 @@
-import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
-import { Prisma, Product } from '@prisma/client';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  BadRequestException,
+} from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
-import { CreateProductDto, UpdateProductDto, ProductQueryDto } from './dto/product.dto';
-import { IProductWithDetails, PaginatedResult } from './interfaces/product.interface';
+import {
+  CreateProductDto,
+  UpdateProductDto,
+  ProductQueryDto,
+} from './dto/product.dto';
+import {
+  IProductWithDetails,
+  PaginatedResult,
+} from './interfaces/product.interface';
+
+/**
+ * Product row returned by every query in this service: the `Product` model
+ * plus the `category` / `tax` / `variants` / `barcodes` includes.
+ */
+type ProductWithDetailsRow = Prisma.ProductGetPayload<{
+  include: {
+    category: true;
+    tax: true;
+    variants: true;
+    barcodes: true;
+  };
+}>;
 
 @Injectable()
 export class ProductService {
   constructor(private readonly databaseService: DatabaseService) {}
 
-  async create(createProductDto: CreateProductDto, tenantId: string): Promise<IProductWithDetails> {
+  async create(
+    createProductDto: CreateProductDto,
+    tenantId: string,
+  ): Promise<IProductWithDetails> {
     return this.databaseService.withTenant(tenantId, async (prisma) => {
       // Check for duplicate SKU
       const existing = await prisma.product.findFirst({
@@ -19,10 +47,17 @@ export class ProductService {
       });
 
       if (existing) {
-        throw new ConflictException(`Product with SKU ${createProductDto.sku} already exists`);
+        throw new ConflictException(
+          `Product with SKU ${createProductDto.sku} already exists`,
+        );
       }
 
-      await this.validateTenantRefs(prisma, tenantId, createProductDto.categoryId, createProductDto.taxId);
+      await this.validateTenantRefs(
+        prisma,
+        tenantId,
+        createProductDto.categoryId,
+        createProductDto.taxId,
+      );
 
       const product = await prisma.product.create({
         data: {
@@ -48,7 +83,10 @@ export class ProductService {
     });
   }
 
-  async findAll(query: ProductQueryDto, tenantId: string): Promise<PaginatedResult<IProductWithDetails>> {
+  async findAll(
+    query: ProductQueryDto,
+    tenantId: string,
+  ): Promise<PaginatedResult<IProductWithDetails>> {
     const { page = 1, limit = 20, search, categoryId, isActive } = query;
 
     const where: Prisma.ProductWhereInput = {
@@ -59,7 +97,11 @@ export class ProductService {
       where.OR = [
         { name: { contains: search, mode: 'insensitive' } },
         { sku: { contains: search, mode: 'insensitive' } },
-        { barcodes: { some: { value: { contains: search, mode: 'insensitive' } } } },
+        {
+          barcodes: {
+            some: { value: { contains: search, mode: 'insensitive' } },
+          },
+        },
       ];
     }
 
@@ -118,25 +160,30 @@ export class ProductService {
     return this.mapToProductWithDetails(product);
   }
 
-  async findByBarcode(barcode: string, tenantId: string): Promise<IProductWithDetails | null> {
-    const barcodeRecord = await this.databaseService.withTenant(tenantId, (prisma) =>
-      prisma.barcode.findFirst({
-        where: {
-          value: barcode,
-          product: { tenantId },
-        },
-        include: {
-          product: {
-            include: {
-              category: true,
-              tax: true,
-              variants: true,
-              barcodes: true,
-            },
+  async findByBarcode(
+    barcode: string,
+    tenantId: string,
+  ): Promise<IProductWithDetails | null> {
+    const barcodeRecord = await this.databaseService.withTenant(
+      tenantId,
+      (prisma) =>
+        prisma.barcode.findFirst({
+          where: {
+            value: barcode,
+            product: { tenantId },
           },
-          variant: true,
-        },
-      }),
+          include: {
+            product: {
+              include: {
+                category: true,
+                tax: true,
+                variants: true,
+                barcodes: true,
+              },
+            },
+            variant: true,
+          },
+        }),
     );
 
     if (!barcodeRecord) {
@@ -146,9 +193,15 @@ export class ProductService {
     return this.mapToProductWithDetails(barcodeRecord.product);
   }
 
-  async update(id: string, updateProductDto: UpdateProductDto, tenantId: string): Promise<IProductWithDetails> {
+  async update(
+    id: string,
+    updateProductDto: UpdateProductDto,
+    tenantId: string,
+  ): Promise<IProductWithDetails> {
     return this.databaseService.withTenant(tenantId, async (prisma) => {
-      const existing = await prisma.product.findFirst({ where: { id, tenantId } });
+      const existing = await prisma.product.findFirst({
+        where: { id, tenantId },
+      });
       if (!existing) {
         throw new NotFoundException(`Product with ID ${id} not found`);
       }
@@ -163,11 +216,18 @@ export class ProductService {
           },
         });
         if (duplicate) {
-          throw new ConflictException(`Product with SKU ${updateProductDto.sku} already exists`);
+          throw new ConflictException(
+            `Product with SKU ${updateProductDto.sku} already exists`,
+          );
         }
       }
 
-      await this.validateTenantRefs(prisma, tenantId, updateProductDto.categoryId, updateProductDto.taxId);
+      await this.validateTenantRefs(
+        prisma,
+        tenantId,
+        updateProductDto.categoryId,
+        updateProductDto.taxId,
+      );
 
       const product = await prisma.product.update({
         where: { id },
@@ -186,7 +246,9 @@ export class ProductService {
 
   async remove(id: string, tenantId: string): Promise<{ success: boolean }> {
     return this.databaseService.withTenant(tenantId, async (prisma) => {
-      const existing = await prisma.product.findFirst({ where: { id, tenantId } });
+      const existing = await prisma.product.findFirst({
+        where: { id, tenantId },
+      });
       if (!existing) {
         throw new NotFoundException(`Product with ID ${id} not found`);
       }
@@ -208,26 +270,29 @@ export class ProductService {
     taxId?: string,
   ): Promise<void> {
     if (categoryId) {
-      const cat = await prisma.category.findFirst({ where: { id: categoryId, tenantId } });
+      const cat = await prisma.category.findFirst({
+        where: { id: categoryId, tenantId },
+      });
       if (!cat) {
-        throw new BadRequestException(`Category ${categoryId} does not belong to this tenant`);
+        throw new BadRequestException(
+          `Category ${categoryId} does not belong to this tenant`,
+        );
       }
     }
     if (taxId) {
-      const tax = await prisma.tax.findFirst({ where: { id: taxId, tenantId } });
+      const tax = await prisma.tax.findFirst({
+        where: { id: taxId, tenantId },
+      });
       if (!tax) {
-        throw new BadRequestException(`Tax ${taxId} does not belong to this tenant`);
+        throw new BadRequestException(
+          `Tax ${taxId} does not belong to this tenant`,
+        );
       }
     }
   }
 
   private mapToProductWithDetails(
-    product: Product & {
-      category?: any;
-      tax?: any;
-      variants?: any[];
-      barcodes?: any[];
-    },
+    product: ProductWithDetailsRow,
   ): IProductWithDetails {
     return {
       id: product.id,
@@ -268,7 +333,7 @@ export class ProductService {
       variants: product.variants?.map((v) => ({
         id: v.id,
         productId: v.productId,
-        attributes: v.attributes,
+        attributes: v.attributes as Record<string, string>,
         barcode: v.barcode,
         priceOverride: v.priceOverride ? Number(v.priceOverride) : null,
         costOverride: v.costOverride ? Number(v.costOverride) : null,

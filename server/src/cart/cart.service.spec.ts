@@ -58,7 +58,10 @@ describe('CartService', () => {
     barcodes: [],
   };
 
-  async function mutateCart(token: string, mutator: (cart: any) => void): Promise<void> {
+  async function mutateCart(
+    token: string,
+    mutator: (cart: any) => void,
+  ): Promise<void> {
     const raw = JSON.parse(store.get(`cart:${token}`)!);
     mutator(raw);
     store.set(`cart:${token}`, JSON.stringify(raw));
@@ -102,7 +105,11 @@ describe('CartService', () => {
 
   describe('create', () => {
     it('should create a new cart bound to the caller tenant and user', async () => {
-      const result = await service.create({ shopId: 'shop-1' }, TENANT, CASHIER);
+      const result = await service.create(
+        { shopId: 'shop-1' },
+        TENANT,
+        CASHIER,
+      );
 
       expect(result.token).toBeDefined();
       expect(result.shopId).toBe('shop-1');
@@ -135,9 +142,9 @@ describe('CartService', () => {
     });
 
     it('should throw NotFoundException when cart not found', async () => {
-      await expect(service.findByToken('nonexistent-token', TENANT)).rejects.toThrow(
-        'Cart not found',
-      );
+      await expect(
+        service.findByToken('nonexistent-token', TENANT),
+      ).rejects.toThrow('Cart not found');
     });
 
     it('should throw and remove cart when expired', async () => {
@@ -173,7 +180,10 @@ describe('CartService', () => {
       expect(result.lines).toHaveLength(1);
       expect(result.lines[0].qty).toBe(2);
       expect(result.total).toBe(200);
-      expect(mockProductService.findOne).toHaveBeenCalledWith('product-1', TENANT);
+      expect(mockProductService.findOne).toHaveBeenCalledWith(
+        'product-1',
+        TENANT,
+      );
     });
 
     it('should throw when product not found', async () => {
@@ -182,7 +192,11 @@ describe('CartService', () => {
       mockProductService.findOne.mockResolvedValue(null);
 
       await expect(
-        service.addLine(cart.token, { productId: 'nonexistent', qty: 1 }, TENANT),
+        service.addLine(
+          cart.token,
+          { productId: 'nonexistent', qty: 1 },
+          TENANT,
+        ),
       ).rejects.toThrow('Product not found');
     });
 
@@ -196,7 +210,11 @@ describe('CartService', () => {
       });
 
       await expect(
-        service.addLine(cart.token, { productId: 'product-1', qty: 10 }, TENANT),
+        service.addLine(
+          cart.token,
+          { productId: 'product-1', qty: 10 },
+          TENANT,
+        ),
       ).rejects.toThrow('Insufficient stock');
     });
 
@@ -210,8 +228,16 @@ describe('CartService', () => {
       });
       mockPricing(200, 200);
 
-      await service.addLine(cart.token, { productId: 'product-1', qty: 1 }, TENANT);
-      const result = await service.addLine(cart.token, { productId: 'product-1', qty: 2 }, TENANT);
+      await service.addLine(
+        cart.token,
+        { productId: 'product-1', qty: 1 },
+        TENANT,
+      );
+      const result = await service.addLine(
+        cart.token,
+        { productId: 'product-1', qty: 2 },
+        TENANT,
+      );
 
       expect(result.lines).toHaveLength(1);
       expect(result.lines[0].qty).toBe(3);
@@ -227,7 +253,11 @@ describe('CartService', () => {
       });
       mockPricing(200, 200);
 
-      await service.addLine(cart.token, { productId: 'product-1', qty: 2 }, TENANT);
+      await service.addLine(
+        cart.token,
+        { productId: 'product-1', qty: 2 },
+        TENANT,
+      );
       const reloaded = await service.findByToken(cart.token, TENANT);
 
       expect(reloaded.lines).toHaveLength(1);
@@ -252,7 +282,12 @@ describe('CartService', () => {
       });
       mockPricing(300, 300);
 
-      const result = await service.updateLine(cart.token, 'line-1', { qty: 3 }, TENANT);
+      const result = await service.updateLine(
+        cart.token,
+        'line-1',
+        { qty: 3 },
+        TENANT,
+      );
 
       expect(result.lines[0].qty).toBe(3);
       expect(result.total).toBe(300);
@@ -280,7 +315,12 @@ describe('CartService', () => {
         taxBreakdown: [],
       });
 
-      const result = await service.updateLine(cart.token, 'line-1', { qty: 0 }, TENANT);
+      const result = await service.updateLine(
+        cart.token,
+        'line-1',
+        { qty: 0 },
+        TENANT,
+      );
 
       expect(result.lines).toHaveLength(0);
     });
@@ -377,13 +417,17 @@ describe('CartService', () => {
       const result = await service.delete(cart.token, TENANT);
 
       expect(result.success).toBe(true);
-      await expect(service.findByToken(cart.token, TENANT)).rejects.toThrow('Cart not found');
+      await expect(service.findByToken(cart.token, TENANT)).rejects.toThrow(
+        'Cart not found',
+      );
     });
 
     it('should not delete another tenant cart', async () => {
       const cart = await service.create({ shopId: 'shop-1' }, TENANT, CASHIER);
 
-      await expect(service.delete(cart.token, 'tenant-2')).rejects.toThrow('Cart not found');
+      await expect(service.delete(cart.token, 'tenant-2')).rejects.toThrow(
+        'Cart not found',
+      );
     });
   });
 });

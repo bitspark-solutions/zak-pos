@@ -1,10 +1,15 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { DatabaseService } from '../database/database.service';
 import { PricingService } from '../pricing/pricing.service';
 import { ProductService } from '../product/product.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { RedisService } from '../redis/redis.service';
+import type { IProductWithDetails } from '../product/interfaces/product.interface';
 import {
   Cart,
   CartLine,
@@ -41,11 +46,18 @@ export class CartService {
   }
 
   private async saveCart(cart: Cart): Promise<void> {
-    const ttl = Math.max(1, Math.floor((cart.expiresAt.getTime() - Date.now()) / 1000));
+    const ttl = Math.max(
+      1,
+      Math.floor((cart.expiresAt.getTime() - Date.now()) / 1000),
+    );
     await this.redis.setJson(this.cartKey(cart.token), cart, ttl);
   }
 
-  async create(createCartDto: CreateCartDto, tenantId: string, cashierId: string): Promise<Cart> {
+  async create(
+    createCartDto: CreateCartDto,
+    tenantId: string,
+    cashierId: string,
+  ): Promise<Cart> {
     const token = randomUUID();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + CART_TTL_SECONDS * 1000);
@@ -88,7 +100,11 @@ export class CartService {
     return cart;
   }
 
-  async addLine(token: string, addLineDto: AddLineDto, tenantId: string): Promise<Cart> {
+  async addLine(
+    token: string,
+    addLineDto: AddLineDto,
+    tenantId: string,
+  ): Promise<Cart> {
     const cart = await this.findByToken(token, tenantId);
 
     if (cart.status !== 'active') {
@@ -96,11 +112,17 @@ export class CartService {
     }
 
     // Get product details
-    let product;
+    let product: IProductWithDetails | null;
     if (addLineDto.barcode) {
-      product = await this.productService.findByBarcode(addLineDto.barcode, cart.tenantId);
+      product = await this.productService.findByBarcode(
+        addLineDto.barcode,
+        cart.tenantId,
+      );
     } else {
-      product = await this.productService.findOne(addLineDto.productId, cart.tenantId);
+      product = await this.productService.findOne(
+        addLineDto.productId,
+        cart.tenantId,
+      );
     }
 
     if (!product) {
@@ -112,7 +134,9 @@ export class CartService {
     if (addLineDto.unitPrice !== undefined) {
       unitPrice = addLineDto.unitPrice;
     } else if (addLineDto.variantId && product.variants) {
-      const variant = product.variants.find((v) => v.id === addLineDto.variantId);
+      const variant = product.variants.find(
+        (v) => v.id === addLineDto.variantId,
+      );
       unitPrice = variant?.priceOverride
         ? Number(variant.priceOverride)
         : Number(product.basePrice);
@@ -123,7 +147,13 @@ export class CartService {
     // Check stock availability
     const stockCheck = await this.inventoryService.checkAvailability(
       cart.shopId,
-      [{ productId: product.id, variantId: addLineDto.variantId, quantity: addLineDto.qty }],
+      [
+        {
+          productId: product.id,
+          variantId: addLineDto.variantId,
+          quantity: addLineDto.qty,
+        },
+      ],
       cart.tenantId,
     );
 
@@ -253,7 +283,11 @@ export class CartService {
     return cart;
   }
 
-  async removeLine(token: string, lineId: string, tenantId: string): Promise<Cart> {
+  async removeLine(
+    token: string,
+    lineId: string,
+    tenantId: string,
+  ): Promise<Cart> {
     const cart = await this.findByToken(token, tenantId);
 
     if (cart.status !== 'active') {
@@ -356,7 +390,10 @@ export class CartService {
       lineTotal: line.lineTotal,
     }));
 
-    const priceCalc = await this.pricingService.calculatePrice(lineItems, cart.tenantId);
+    const priceCalc = await this.pricingService.calculatePrice(
+      lineItems,
+      cart.tenantId,
+    );
 
     cart.subtotal = priceCalc.subtotal;
     cart.discount = priceCalc.discount;

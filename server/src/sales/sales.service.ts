@@ -1,10 +1,49 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  Logger,
+} from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import { CartService } from '../cart/cart.service';
+import type { Cart } from '../cart/interfaces/cart.interface';
 import { InventoryService } from '../inventory/inventory.service';
 import { TenantService } from '../auth/tenant.service';
-import type { CommitSaleDto, RefundSaleDto, ISale, ISaleLine } from './interfaces/sales.interface';
+import type {
+  CommitSaleDto,
+  RefundSaleDto,
+  ISale,
+  ISaleLine,
+} from './interfaces/sales.interface';
+
+/**
+ * Money columns come back from Prisma as `Decimal`; specs / plain numbers are
+ * accepted too so the mapping stays structural instead of nominal.
+ */
+type DecimalValue = Prisma.Decimal | number | string;
+
+/**
+ * The `sales` row shape this service reads (a Prisma `Sale`; extra properties
+ * such as the optional `saleLines` include are allowed but unused here).
+ */
+interface SaleRecord {
+  id: string;
+  tenantId: string;
+  shopId: string;
+  customerId: string | null;
+  cashierId: string;
+  status: string;
+  channel: string;
+  subtotal: DecimalValue;
+  discount: DecimalValue;
+  tax: DecimalValue;
+  total: DecimalValue;
+  paymentStatus: string;
+  currency: string;
+  createdAt: Date;
+  postedAt: Date | null;
+}
 
 @Injectable()
 export class SalesService {
@@ -17,7 +56,10 @@ export class SalesService {
     private readonly tenantService: TenantService,
   ) {}
 
-  async commitSale(dto: CommitSaleDto, tenantId: string): Promise<{ sale: ISale; lines: ISaleLine[] }> {
+  async commitSale(
+    dto: CommitSaleDto,
+    tenantId: string,
+  ): Promise<{ sale: ISale; lines: ISaleLine[] }> {
     // Get cart (tenant ownership is verified inside findByToken)
     const cart = await this.cartService.findByToken(dto.cartToken, tenantId);
 
@@ -103,7 +145,11 @@ export class SalesService {
           tx,
         );
       } catch (error) {
-        throw new BadRequestException(`Failed to deduct inventory: ${error.message}`);
+        throw new BadRequestException(
+          `Failed to deduct inventory: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
       }
 
       // 4. Create Payment record
@@ -137,7 +183,7 @@ export class SalesService {
 
   private async createSaleJournalEntries(
     tx: Prisma.TransactionClient,
-    cart: any,
+    cart: Cart,
     saleId: string,
     paymentMethod: string,
   ): Promise<void> {
@@ -251,7 +297,7 @@ export class SalesService {
   }
 
   async findAll(tenantId: string, shopId?: string): Promise<ISale[]> {
-    const where: any = { tenantId };
+    const where: Prisma.SaleWhereInput = { tenantId };
     if (shopId) where.shopId = shopId;
 
     const sales = await this.databaseService.withTenant(tenantId, (tx) =>
@@ -280,7 +326,10 @@ export class SalesService {
     return this.mapToSale(sale);
   }
 
-  async findByIdWithLines(id: string, tenantId: string): Promise<{ sale: ISale; lines: ISaleLine[] }> {
+  async findByIdWithLines(
+    id: string,
+    tenantId: string,
+  ): Promise<{ sale: ISale; lines: ISaleLine[] }> {
     const sale = await this.databaseService.withTenant(tenantId, (tx) =>
       tx.sale.findFirst({
         where: { id, tenantId },
@@ -309,7 +358,11 @@ export class SalesService {
     };
   }
 
-  async refund(id: string, dto: RefundSaleDto, tenantId: string): Promise<ISale> {
+  async refund(
+    id: string,
+    dto: RefundSaleDto,
+    tenantId: string,
+  ): Promise<ISale> {
     // One RLS-scoped transaction: read → insert return → flip sale status.
     return this.databaseService.withTenant(tenantId, async (tx) => {
       const sale = await tx.sale.findFirst({
@@ -355,12 +408,14 @@ export class SalesService {
     });
   }
 
-  private mapToSale(sale: any): ISale {
+  private mapToSale(sale: SaleRecord): ISale {
     return {
       id: sale.id,
       tenantId: sale.tenantId,
       shopId: sale.shopId,
-      customerId: sale.customerId,
+      // Prisma exposes nullable columns as `null`; ISale declares them optional,
+      // so the value is forwarded untouched (null stays null at runtime).
+      customerId: sale.customerId as ISale['customerId'],
       cashierId: sale.cashierId,
       status: sale.status,
       channel: sale.channel,
@@ -371,7 +426,7 @@ export class SalesService {
       paymentStatus: sale.paymentStatus,
       currency: sale.currency,
       createdAt: sale.createdAt,
-      postedAt: sale.postedAt,
+      postedAt: sale.postedAt as ISale['postedAt'],
     };
   }
 }
