@@ -2,6 +2,7 @@ import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { DatabaseModule } from './database/database.module';
+import { RedisModule } from './redis/redis.module';
 import { HealthController } from './health/health.controller';
 import { DatabaseConnectionMiddleware } from './middleware/database-connection.middleware';
 import { AuthModule } from './auth/auth.module';
@@ -16,6 +17,7 @@ import { InvoiceModule } from './invoice/invoice.module';
 @Module({
   imports: [
     DatabaseModule,
+    RedisModule,
     AuthModule,
     UsersModule,
     ProductModule,

@@ -9,6 +9,8 @@ import { LocalStrategy } from './strategies/local.strategy';
 import { RolesGuard } from './guards/roles.guard';
 import { PermissionsGuard } from './guards/permissions.guard';
 import { DeviceService } from './device.service';
+import { SessionService } from './session.service';
+import { TenantService } from './tenant.service';
 import { UsersModule } from '../users/users.module';
 import { DatabaseModule } from '../database/database.module';
 
@@ -22,8 +24,8 @@ import { DatabaseModule } from '../database/database.module';
       signOptions: { expiresIn: (process.env.JWT_EXPIRES_IN || '7d') as any },
     }),
   ],
-  providers: [AuthService, Auth0Service, JwtStrategy, LocalStrategy, RolesGuard, PermissionsGuard, DeviceService],
+  providers: [AuthService, Auth0Service, JwtStrategy, LocalStrategy, RolesGuard, PermissionsGuard, DeviceService, SessionService, TenantService],
   controllers: [AuthController],
-  exports: [AuthService, RolesGuard, PermissionsGuard],
+  exports: [AuthService, RolesGuard, PermissionsGuard, SessionService, TenantService],
 })
 export class AuthModule {}

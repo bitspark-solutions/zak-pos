@@ -33,10 +33,8 @@ export interface Cart {
 }
 
 export interface CreateCartDto {
-  tenantId?: string;
   shopId: string;
   customerId?: string;
-  cashierId: string;
 }
 
 export interface AddLineDto {

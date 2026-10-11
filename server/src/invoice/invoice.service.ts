@@ -16,208 +16,206 @@ export class InvoiceService {
     return `INV-${year}${month}${day}-${random}`;
   }
 
-  async create(createInvoiceDto: CreateInvoiceDto, userId: string): Promise<IInvoice> {
-    const { prisma } = this.databaseService.getPrisma();
-    const tenantId = 'tenant-1'; // TODO: Get from user context
+  async create(createInvoiceDto: CreateInvoiceDto, userId: string, tenantId: string): Promise<IInvoice> {
+    return this.databaseService.withTenant(tenantId, async (prisma) => {
+      // If saleId provided, get sale data
+      let subtotal = 0;
+      let tax = 0;
+      let discount = 0;
+      let total = 0;
 
-    // If saleId provided, get sale data
-    let subtotal = 0;
-    let tax = 0;
-    let discount = 0;
-    let total = 0;
-
-    if (createInvoiceDto.saleId) {
-      const sale = await prisma.sale.findUnique({
-        where: { id: createInvoiceDto.saleId },
-      });
-      if (!sale) {
-        throw new NotFoundException('Sale not found');
+      if (createInvoiceDto.saleId) {
+        const sale = await prisma.sale.findFirst({
+          where: { id: createInvoiceDto.saleId, tenantId },
+        });
+        if (!sale) {
+          throw new NotFoundException('Sale not found');
+        }
+        subtotal = Number(sale.subtotal);
+        tax = Number(sale.tax);
+        discount = Number(sale.discount);
+        total = Number(sale.total);
       }
-      subtotal = Number(sale.subtotal);
-      tax = Number(sale.tax);
-      discount = Number(sale.discount);
-      total = Number(sale.total);
-    }
 
-    const invoice = await prisma.invoice.create({
-      data: {
-        invoiceNumber: this.generateInvoiceNumber(),
-        tenantId,
-        shopId: createInvoiceDto.shopId,
-        saleId: createInvoiceDto.saleId,
-        customerId: createInvoiceDto.customerId,
-        dueDate: createInvoiceDto.dueDate ? new Date(createInvoiceDto.dueDate) : null,
-        notes: createInvoiceDto.notes,
-        subtotal,
-        tax,
-        discount,
-        total,
-        status: 'draft',
-      },
+      const invoice = await prisma.invoice.create({
+        data: {
+          invoiceNumber: this.generateInvoiceNumber(),
+          tenantId,
+          shopId: createInvoiceDto.shopId,
+          saleId: createInvoiceDto.saleId,
+          customerId: createInvoiceDto.customerId,
+          dueDate: createInvoiceDto.dueDate ? new Date(createInvoiceDto.dueDate) : null,
+          notes: createInvoiceDto.notes,
+          subtotal,
+          tax,
+          discount,
+          total,
+          status: 'draft',
+        },
+      });
+
+      return this.mapToInterface(invoice);
     });
-
-    return this.mapToInterface(invoice);
   }
 
-  async findAll(query: InvoiceQueryDto): Promise<{ data: IInvoiceWithDetails[]; total: number; page: number; limit: number }> {
-    const { prisma } = this.databaseService.getPrisma();
+  async findAll(query: InvoiceQueryDto, tenantId: string): Promise<{ data: IInvoiceWithDetails[]; total: number; page: number; limit: number }> {
+    return this.databaseService.withTenant(tenantId, async (prisma) => {
+      const where: any = { tenantId };
+      if (query.shopId) where.shopId = query.shopId;
+      if (query.customerId) where.customerId = query.customerId;
+      if (query.status) where.status = query.status;
 
-    const where: any = {};
-    if (query.tenantId) where.tenantId = query.tenantId;
-    if (query.shopId) where.shopId = query.shopId;
-    if (query.customerId) where.customerId = query.customerId;
-    if (query.status) where.status = query.status;
+      const page = query.page || 1;
+      const limit = query.limit || 20;
+      const skip = (page - 1) * limit;
 
-    const page = query.page || 1;
-    const limit = query.limit || 20;
-    const skip = (page - 1) * limit;
+      const [invoices, total] = await Promise.all([
+        prisma.invoice.findMany({
+          where,
+          include: {
+            shop: { select: { id: true, name: true } },
+            customer: { select: { id: true, name: true, email: true, phone: true } },
+            sale: { select: { id: true, total: true, status: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: limit,
+        }),
+        prisma.invoice.count({ where }),
+      ]);
 
-    const [invoices, total] = await Promise.all([
-      prisma.invoice.findMany({
-        where,
+      return {
+        data: invoices.map((inv) => ({
+          ...this.mapToInterface(inv),
+          shop: inv.shop,
+          customer: inv.customer,
+          sale: inv.sale ? {
+            id: inv.sale.id,
+            total: Number(inv.sale.total),
+            status: inv.sale.status,
+          } : null,
+        })),
+        total,
+        page,
+        limit,
+      };
+    });
+  }
+
+  async findOne(id: string, tenantId: string): Promise<IInvoiceWithDetails> {
+    return this.databaseService.withTenant(tenantId, async (prisma) => {
+      const invoice = await prisma.invoice.findFirst({
+        where: { id, tenantId },
         include: {
           shop: { select: { id: true, name: true } },
           customer: { select: { id: true, name: true, email: true, phone: true } },
           sale: { select: { id: true, total: true, status: true } },
         },
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: limit,
-      }),
-      prisma.invoice.count({ where }),
-    ]);
+      });
 
-    return {
-      data: invoices.map((inv) => ({
-        ...this.mapToInterface(inv),
-        shop: inv.shop,
-        customer: inv.customer,
-        sale: inv.sale ? {
-          id: inv.sale.id,
-          total: Number(inv.sale.total),
-          status: inv.sale.status,
+      if (!invoice) {
+        throw new NotFoundException('Invoice not found');
+      }
+
+      return {
+        ...this.mapToInterface(invoice),
+        shop: invoice.shop,
+        customer: invoice.customer,
+        sale: invoice.sale ? {
+          id: invoice.sale.id,
+          total: Number(invoice.sale.total),
+          status: invoice.sale.status,
         } : null,
-      })),
-      total,
-      page,
-      limit,
-    };
+      };
+    });
   }
 
-  async findOne(id: string): Promise<IInvoiceWithDetails> {
-    const { prisma } = this.databaseService.getPrisma();
+  async update(id: string, updateInvoiceDto: UpdateInvoiceDto, tenantId: string): Promise<IInvoice> {
+    return this.databaseService.withTenant(tenantId, async (prisma) => {
+      const invoice = await prisma.invoice.findFirst({ where: { id, tenantId } });
+      if (!invoice) {
+        throw new NotFoundException('Invoice not found');
+      }
 
-    const invoice = await prisma.invoice.findUnique({
-      where: { id },
-      include: {
-        shop: { select: { id: true, name: true } },
-        customer: { select: { id: true, name: true, email: true, phone: true } },
-        sale: { select: { id: true, total: true, status: true } },
-      },
+      // Validate status transition
+      if (updateInvoiceDto.status) {
+        this.validateStatusTransition(invoice.status as InvoiceStatus, updateInvoiceDto.status);
+      }
+
+      const updated = await prisma.invoice.update({
+        where: { id },
+        data: {
+          status: updateInvoiceDto.status,
+          dueDate: updateInvoiceDto.dueDate ? new Date(updateInvoiceDto.dueDate) : undefined,
+          notes: updateInvoiceDto.notes,
+        },
+      });
+
+      return this.mapToInterface(updated);
     });
-
-    if (!invoice) {
-      throw new NotFoundException('Invoice not found');
-    }
-
-    return {
-      ...this.mapToInterface(invoice),
-      shop: invoice.shop,
-      customer: invoice.customer,
-      sale: invoice.sale ? {
-        id: invoice.sale.id,
-        total: Number(invoice.sale.total),
-        status: invoice.sale.status,
-      } : null,
-    };
   }
 
-  async update(id: string, updateInvoiceDto: UpdateInvoiceDto): Promise<IInvoice> {
-    const { prisma } = this.databaseService.getPrisma();
+  async send(id: string, tenantId: string): Promise<IInvoice> {
+    return this.databaseService.withTenant(tenantId, async (prisma) => {
+      const invoice = await prisma.invoice.findFirst({ where: { id, tenantId } });
+      if (!invoice) {
+        throw new NotFoundException('Invoice not found');
+      }
 
-    const invoice = await prisma.invoice.findUnique({ where: { id } });
-    if (!invoice) {
-      throw new NotFoundException('Invoice not found');
-    }
+      if (invoice.status !== 'draft' && invoice.status !== 'confirmed') {
+        throw new BadRequestException('Invoice must be in draft or confirmed status to send');
+      }
 
-    // Validate status transition
-    if (updateInvoiceDto.status) {
-      this.validateStatusTransition(invoice.status as InvoiceStatus, updateInvoiceDto.status);
-    }
+      const updated = await prisma.invoice.update({
+        where: { id },
+        data: { status: 'sent' },
+      });
 
-    const updated = await prisma.invoice.update({
-      where: { id },
-      data: {
-        status: updateInvoiceDto.status,
-        dueDate: updateInvoiceDto.dueDate ? new Date(updateInvoiceDto.dueDate) : undefined,
-        notes: updateInvoiceDto.notes,
-      },
+      // TODO: Send email/SMS notification to customer
+      // await this.notificationService.sendInvoice(invoice);
+
+      return this.mapToInterface(updated);
     });
-
-    return this.mapToInterface(updated);
   }
 
-  async send(id: string): Promise<IInvoice> {
-    const { prisma } = this.databaseService.getPrisma();
+  async confirm(id: string, tenantId: string): Promise<IInvoice> {
+    return this.databaseService.withTenant(tenantId, async (prisma) => {
+      const invoice = await prisma.invoice.findFirst({ where: { id, tenantId } });
+      if (!invoice) {
+        throw new NotFoundException('Invoice not found');
+      }
 
-    const invoice = await prisma.invoice.findUnique({ where: { id } });
-    if (!invoice) {
-      throw new NotFoundException('Invoice not found');
-    }
+      if (invoice.status !== 'sent') {
+        throw new BadRequestException('Invoice must be sent to confirm');
+      }
 
-    if (invoice.status !== 'draft' && invoice.status !== 'confirmed') {
-      throw new BadRequestException('Invoice must be in draft or confirmed status to send');
-    }
+      const updated = await prisma.invoice.update({
+        where: { id },
+        data: { status: 'confirmed' },
+      });
 
-    const updated = await prisma.invoice.update({
-      where: { id },
-      data: { status: 'sent' },
+      return this.mapToInterface(updated);
     });
-
-    // TODO: Send email/SMS notification to customer
-    // await this.notificationService.sendInvoice(invoice);
-
-    return this.mapToInterface(updated);
   }
 
-  async confirm(id: string): Promise<IInvoice> {
-    const { prisma } = this.databaseService.getPrisma();
+  async cancel(id: string, tenantId: string): Promise<IInvoice> {
+    return this.databaseService.withTenant(tenantId, async (prisma) => {
+      const invoice = await prisma.invoice.findFirst({ where: { id, tenantId } });
+      if (!invoice) {
+        throw new NotFoundException('Invoice not found');
+      }
 
-    const invoice = await prisma.invoice.findUnique({ where: { id } });
-    if (!invoice) {
-      throw new NotFoundException('Invoice not found');
-    }
+      if (invoice.status === 'paid') {
+        throw new BadRequestException('Cannot cancel a paid invoice');
+      }
 
-    if (invoice.status !== 'sent') {
-      throw new BadRequestException('Invoice must be sent to confirm');
-    }
+      const updated = await prisma.invoice.update({
+        where: { id },
+        data: { status: 'cancelled' },
+      });
 
-    const updated = await prisma.invoice.update({
-      where: { id },
-      data: { status: 'confirmed' },
+      return this.mapToInterface(updated);
     });
-
-    return this.mapToInterface(updated);
-  }
-
-  async cancel(id: string): Promise<IInvoice> {
-    const { prisma } = this.databaseService.getPrisma();
-
-    const invoice = await prisma.invoice.findUnique({ where: { id } });
-    if (!invoice) {
-      throw new NotFoundException('Invoice not found');
-    }
-
-    if (invoice.status === 'paid') {
-      throw new BadRequestException('Cannot cancel a paid invoice');
-    }
-
-    const updated = await prisma.invoice.update({
-      where: { id },
-      data: { status: 'cancelled' },
-    });
-
-    return this.mapToInterface(updated);
   }
 
   private validateStatusTransition(current: InvoiceStatus, next: InvoiceStatus): void {

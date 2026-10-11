@@ -8,6 +8,8 @@ import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import type { Response } from 'express';
 import { UsersService } from '../users/users.service';
+import { DatabaseService } from '../database/database.service';
+import { ROLE_PERMISSIONS, Role } from './enums/permissions.enum';
 
 @Controller('auth')
 export class AuthController {
@@ -15,7 +17,8 @@ export class AuthController {
     private authService: AuthService,
     private auth0Service: Auth0Service,
     private jwtService: JwtService,
-    private usersService: UsersService
+    private usersService: UsersService,
+    private databaseService: DatabaseService
   ) {}
 
   @Post('login')
@@ -32,7 +35,7 @@ export class AuthController {
   @Get('profile')
   async getProfile(@Request() req) {
     // Get full user data from database
-    const user = await this.usersService.findOne(req.user.id);
+    const user = await this.usersService.findOne(req.user.id, req.user.tenantId);
     if (!user) {
       throw new Error('User not found');
     }
@@ -120,28 +123,29 @@ export class AuthController {
       // Get user info
       const userInfo = await this.auth0Service.getUserInfo(tokenData.access_token);
 
-      // Check if user exists in local database
-      let localUser = await this.usersService.findByEmail(userInfo.email);
+      // Auth0 verified the identity; local DB must have the provisioned record
+      // (source of truth for tenant/role/status) before issuing a token.
+      const localUser = await this.usersService.findByEmail(userInfo.email);
 
       if (!localUser) {
-        // Create user in local database if they don't exist
-        const createdUser = await this.usersService.create({
-          email: userInfo.email,
-          name: userInfo.name || userInfo.nickname || 'User',
-          password: 'auth0-managed', // Auth0 manages the password
-          role: userInfo.user_metadata?.role || 'cashier',
-          tenantId: userInfo.user_metadata?.tenantId || 'tenant-1'
-        });
-        // create() returns user without password, findByEmail returns with password
-        // Both are compatible for our use case (we don't use password field)
-        localUser = createdUser as any;
+        throw new Error('User is not provisioned in this workspace');
+      }
+      if (localUser.status && localUser.status !== 'active') {
+        throw new Error('User account is disabled');
       }
 
-      if (!localUser) {
-        throw new Error('Failed to get or create user');
+      // Backfill the Auth0 user_id mapping on first OAuth login
+      if (!localUser.externalId) {
+        await this.databaseService
+          .getPrisma()
+          .prisma.user.update({
+            where: { id: localUser.id },
+            data: { externalId: userInfo.sub },
+          })
+          .catch(() => undefined);
       }
 
-      // Generate JWT token with user context
+      // Generate JWT token with user context (read from local DB, not Auth0 metadata)
       const payload = {
         email: localUser.email,
         sub: localUser.id,
@@ -168,43 +172,7 @@ export class AuthController {
   }
 
   private getUserPermissions(role: string): string[] {
-    const rolePermissions = {
-      admin: [
-        'user:create', 'user:read', 'user:update', 'user:delete',
-        'tenant:create', 'tenant:manage',
-        'report:read', 'report:export',
-        'system:admin'
-      ],
-      owner: [
-        'user:create', 'user:read', 'user:update', 'user:delete',
-        'product:create', 'product:read', 'product:update', 'product:delete',
-        'inventory:create', 'inventory:read', 'inventory:update', 'inventory:delete',
-        'sale:create', 'sale:read', 'sale:update', 'sale:delete',
-        'invoice:create', 'invoice:read', 'invoice:update', 'invoice:delete',
-        'invoice:send', 'invoice:confirm',
-        'report:read', 'report:export',
-        'tenant:manage'
-      ],
-      manager: [
-        // Managers CANNOT create users
-        'product:create', 'product:read', 'product:update', 'product:delete',
-        'inventory:create', 'inventory:read', 'inventory:update', 'inventory:delete',
-        'sale:create', 'sale:read', 'sale:update', 'sale:delete',
-        'invoice:create', 'invoice:read', 'invoice:update', 'invoice:delete',
-        'invoice:send', 'invoice:confirm',
-        'report:read'
-      ],
-      cashier: [
-        // Cashiers can only read products/inventory and create sales
-        'product:read',
-        'inventory:read',
-        'sale:create', 'sale:read',
-        'invoice:read', 'invoice:send', 'invoice:confirm',
-        'report:read'
-      ]
-    };
-
-    return rolePermissions[role] || [];
+    return ROLE_PERMISSIONS[role as Role] || [];
   }
 }
 

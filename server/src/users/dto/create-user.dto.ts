@@ -17,10 +17,10 @@ export class CreateUserDto {
 
   @IsOptional()
   @IsString()
-  tenantId?: string;
+  role?: string;
 
   @IsOptional()
   @IsString()
-  role?: string;
+  externalId?: string;
 }
 

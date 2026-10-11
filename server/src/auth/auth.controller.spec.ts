@@ -4,6 +4,7 @@ import { AuthService } from './auth.service';
 import { Auth0Service } from './auth0.service';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
+import { DatabaseService } from '../database/database.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { Request } from 'express';
@@ -34,6 +35,7 @@ describe('AuthController', () => {
   const mockUsersService = {
     findOne: jest.fn(),
     findByEmail: jest.fn(),
+    create: jest.fn(),
     count: jest.fn().mockResolvedValue(0),
   };
 
@@ -56,6 +58,14 @@ describe('AuthController', () => {
         {
           provide: UsersService,
           useValue: mockUsersService,
+        },
+        {
+          provide: DatabaseService,
+          useValue: {
+            getPrisma: jest.fn().mockReturnValue({
+              prisma: { user: { update: jest.fn().mockResolvedValue(undefined) } },
+            }),
+          },
         },
       ],
     }).compile();

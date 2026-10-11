@@ -1,32 +1,28 @@
-import { IsString, IsNumber, IsOptional, IsUUID, IsEnum, Min } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsEnum, Min } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class StockQueryDto {
-  @IsUUID()
+  @IsString()
   @IsOptional()
   shopId?: string;
 
-  @IsUUID()
+  @IsString()
   @IsOptional()
   productId?: string;
 
-  @IsUUID()
-  @IsOptional()
-  variantId?: string;
-
   @IsString()
   @IsOptional()
-  tenantId?: string;
+  variantId?: string;
 }
 
 export class AdjustStockDto {
-  @IsUUID()
+  @IsString()
   shopId: string;
 
-  @IsUUID()
+  @IsString()
   productId: string;
 
-  @IsUUID()
+  @IsString()
   @IsOptional()
   variantId?: string;
 
@@ -51,18 +47,14 @@ export class AdjustStockDto {
   @IsString()
   @IsOptional()
   notes?: string;
-
-  @IsString()
-  @IsOptional()
-  tenantId?: string;
 }
 
 export class InventoryMovementQueryDto {
-  @IsUUID()
+  @IsString()
   @IsOptional()
   shopId?: string;
 
-  @IsUUID()
+  @IsString()
   @IsOptional()
   productId?: string;
 
@@ -73,8 +65,4 @@ export class InventoryMovementQueryDto {
   @IsString()
   @IsOptional()
   endDate?: string;
-
-  @IsString()
-  @IsOptional()
-  tenantId?: string;
 }

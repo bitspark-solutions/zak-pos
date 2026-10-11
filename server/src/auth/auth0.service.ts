@@ -40,6 +40,18 @@ interface Auth0UserResponse {
   };
 }
 
+export interface Auth0ManagementUser {
+  user_id: string;
+  email: string;
+  name?: string;
+  user_metadata?: {
+    role?: string;
+    tenantId?: string;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
 @Injectable()
 export class Auth0Service {
   constructor() {
@@ -149,6 +161,9 @@ export class Auth0Service {
             client_secret: auth0Config.clientSecret,
             audience: auth0Config.audience,
             scope: 'openid profile email',
+            // Without this Auth0 tries every connection and can fail with
+            // "Password must be reset" or realm ambiguity
+            connection: auth0Config.connection,
           }),
         },
       );
@@ -181,6 +196,11 @@ export class Auth0Service {
   }
 
   async getManagementApiToken(): Promise<string> {
+    if (!auth0Config.mgmtClientId || !auth0Config.mgmtClientSecret) {
+      throw new Error(
+        'Auth0 Management API client not configured (AUTH0_MGMT_CLIENT_ID / AUTH0_MGMT_CLIENT_SECRET)',
+      );
+    }
     try {
       const response = await fetch(
         `https://${auth0Config.domain}/oauth/token`,
@@ -190,9 +210,9 @@ export class Auth0Service {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            client_id: auth0Config.clientId,
-            client_secret: auth0Config.clientSecret,
-            audience: auth0Config.managementApiUrl,
+            client_id: auth0Config.mgmtClientId,
+            client_secret: auth0Config.mgmtClientSecret,
+            audience: auth0Config.managementApiAudience,
             grant_type: 'client_credentials',
           }),
         },
@@ -211,6 +231,34 @@ export class Auth0Service {
         error instanceof Error ? error.message : 'Unknown error';
       throw new Error(`Failed to get management API token: ${errorMessage}`);
     }
+  }
+
+  private async managementRequest(
+    method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+    path: string,
+    body?: Record<string, unknown>,
+  ): Promise<unknown> {
+    const token = await this.getManagementApiToken();
+    const response = await fetch(`${auth0Config.managementApiUrl}${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(
+        `Auth0 Management API ${method} ${path} failed (${response.status}): ${text}`,
+      );
+    }
+
+    if (response.status === 204) {
+      return null;
+    }
+    return await response.json();
   }
 
   async createUser(userData: {
@@ -272,52 +320,86 @@ export class Auth0Service {
     }
   }
 
-  async getUser(userId: string): Promise<null> {
-    // Placeholder for Auth0 user retrieval
-    console.log('Getting user from Auth0:', userId);
-    return await Promise.resolve(null);
+  async getUser(userId: string): Promise<Auth0ManagementUser | null> {
+    const user = await this.managementRequest(
+      'GET',
+      `/users/${encodeURIComponent(userId)}`,
+    );
+    return (user as Auth0ManagementUser) ?? null;
+  }
+
+  async findUserByEmail(email: string): Promise<Auth0ManagementUser | null> {
+    const users = await this.managementRequest(
+      'GET',
+      `/users-by-email?${new URLSearchParams({ email }).toString()}`,
+    );
+    const list = users as Auth0ManagementUser[];
+    return list.length > 0 ? list[0] : null;
   }
 
   async updateUser(
     userId: string,
-    userData: Record<string, unknown>,
-  ): Promise<null> {
-    // Placeholder for Auth0 user update
-    console.log('Updating user in Auth0:', userId, userData);
-    return await Promise.resolve(null);
+    userData: {
+      email?: string;
+      name?: string;
+      password?: string;
+      user_metadata?: Record<string, unknown>;
+    },
+  ): Promise<Auth0ManagementUser | null> {
+    const body: Record<string, unknown> = {};
+    if (userData.email !== undefined) body.email = userData.email;
+    if (userData.name !== undefined) body.name = userData.name;
+    if (userData.user_metadata !== undefined) {
+      body.user_metadata = userData.user_metadata;
+    }
+
+    let updated: Auth0ManagementUser | null = null;
+    if (Object.keys(body).length > 0) {
+      updated = (await this.managementRequest(
+        'PATCH',
+        `/users/${encodeURIComponent(userId)}`,
+        body,
+      )) as Auth0ManagementUser;
+    }
+
+    if (userData.password) {
+      // Password changes go through a separate endpoint
+      await this.managementRequest(
+        'POST',
+        `/users/${encodeURIComponent(userId)}/password-change`,
+        { password: userData.password },
+      );
+    }
+
+    return updated;
   }
 
   async deleteUser(userId: string): Promise<boolean> {
-    // Placeholder for Auth0 user deletion
-    console.log('Deleting user from Auth0:', userId);
-    return await Promise.resolve(true);
+    try {
+      await this.managementRequest(
+        'DELETE',
+        `/users/${encodeURIComponent(userId)}`,
+      );
+      return true;
+    } catch (error: unknown) {
+      // 404 means already gone - treat as success
+      const message = error instanceof Error ? error.message : '';
+      if (message.includes('(404)')) {
+        return true;
+      }
+      throw error;
+    }
   }
 
-  async getUsersByTenant(tenantId: string): Promise<unknown[]> {
-    // Placeholder for Auth0 tenant user retrieval
-    console.log('Getting users by tenant from Auth0:', tenantId);
-    return await Promise.resolve([]);
-  }
-
-  async assignRoleToUser(userId: string, roleId: string): Promise<boolean> {
-    // Placeholder for Auth0 role assignment
-    console.log('Assigning role to user in Auth0:', userId, roleId);
-    return await Promise.resolve(true);
-  }
-
-  async createRole(roleData: {
-    name: string;
-    description: string;
-    permissions: string[];
-  }): Promise<null> {
-    // Placeholder for Auth0 role creation
-    console.log('Creating role in Auth0:', roleData);
-    return await Promise.resolve(null);
-  }
-
-  async getRoles(): Promise<unknown[]> {
-    // Placeholder for Auth0 role retrieval
-    console.log('Getting roles from Auth0');
-    return await Promise.resolve([]);
+  async getUsersByTenant(tenantId: string): Promise<Auth0ManagementUser[]> {
+    const users = await this.managementRequest(
+      'GET',
+      `/users?${new URLSearchParams({
+        q: `user_metadata.tenantId:"${tenantId}"`,
+        search_engine: 'v3',
+        per_page: '100',
+      }).toString()}`,
+    );
+    return users as Auth0ManagementUser[];
   }
 }

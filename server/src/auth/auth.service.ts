@@ -3,11 +3,15 @@ import {
   UnauthorizedException,
   ConflictException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { UsersService } from '../users/users.service';
 import { Auth0Service, Auth0UserInfo } from './auth0.service';
+import { DatabaseService } from '../database/database.service';
+import { TenantService } from './tenant.service';
+import { ROLE_PERMISSIONS, Role } from './enums/permissions.enum';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 
@@ -23,6 +27,8 @@ interface UserWithPassword {
   role: string;
   tenantId: string;
   phone?: string | null;
+  externalId?: string | null;
+  status?: string;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -39,10 +45,14 @@ interface AuthenticatedUser {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private usersService: UsersService,
     private jwtService: JwtService,
     private auth0Service: Auth0Service,
+    private databaseService: DatabaseService,
+    private tenantService: TenantService,
   ) {}
 
   private isAuth0Result(result: unknown): result is Auth0Result {
@@ -85,55 +95,56 @@ export class AuthService {
     }
 
     if (auth0Result && auth0Result.userInfo) {
-      // User authenticated via Auth0, validate/ensure user exists in PostgreSQL
-      // Type is guaranteed by type guard above - using eslint-disable for linter false positives
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      const userInfo = auth0Result.userInfo as Auth0UserInfo;
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+      // Credentials verified by Auth0. The local DB is the source of truth for
+      // tenant/role/status - both must agree before login succeeds.
+      const userInfo = auth0Result.userInfo;
       const userEmail = userInfo.email;
       let localUser = (await this.usersService.findByEmail(
-        userEmail as string,
+        userEmail,
       )) as UserWithPassword | null;
 
       if (!localUser) {
-        // Create local user record if doesn't exist
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-        const userName = userInfo.name || userInfo.nickname || 'User';
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-        const userRole = userInfo.user_metadata?.role || 'cashier';
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-        const userTenantId = userInfo.user_metadata?.tenantId || 'tenant-1';
-        const createdUser = (await this.usersService.create({
-          email: userEmail as string,
-          name: userName as string,
-          password: 'auth0-managed', // Auth0 manages password
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-          role: userRole,
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-          tenantId: userTenantId,
-        })) as UserWithPassword;
-        localUser = createdUser;
+        // Self-service Auth0 accounts are not provisioned here; deny until an
+        // owner/admin registers the user (register flow writes both stores).
+        this.logger.warn(
+          `Auth0 user ${userEmail} has no local DB record - rejecting login`,
+        );
+        return null;
       }
 
-      if (!localUser) {
-        throw new Error('Failed to get or create user in PostgreSQL');
+      if (localUser.status && localUser.status !== 'active') {
+        throw new UnauthorizedException('User account is disabled');
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-      const auth0Id = userInfo.sub;
+      // Backfill Auth0 user_id mapping if register/codes created the row first
+      if (!localUser.externalId && userInfo.sub) {
+        await this.databaseService
+          .getPrisma()
+          .prisma.user.update({
+            where: { id: localUser.id },
+            data: { externalId: userInfo.sub },
+          })
+          .catch((err: unknown) =>
+            this.logger.warn(
+              `Failed to backfill externalId for ${localUser.id}: ${String(err)}`,
+            ),
+          );
+        localUser.externalId = userInfo.sub;
+      }
+
       return {
         id: localUser.id,
         email: localUser.email,
         name: localUser.name,
         role: localUser.role,
         tenantId: localUser.tenantId,
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        auth0Id: auth0Id,
+        auth0Id: localUser.externalId || userInfo.sub,
         permissions: this.getUserPermissions(localUser.role),
       };
     }
 
-    // Fallback to PostgreSQL authentication (for users not in Auth0 or Auth0 unavailable)
+    // Fallback to PostgreSQL authentication (for local-only users registered
+    // before Auth0, or when Auth0 is unavailable)
     const user = (await this.usersService.findByEmail(
       email,
     )) as UserWithPassword | null;
@@ -143,12 +154,16 @@ export class AuthService {
       user.password !== 'auth0-managed' &&
       (await bcrypt.compare(password, user.password))
     ) {
+      if (user.status && user.status !== 'active') {
+        throw new UnauthorizedException('User account is disabled');
+      }
       return {
         id: user.id,
         email: user.email,
         name: user.name,
         role: user.role,
         tenantId: user.tenantId,
+        auth0Id: user.externalId || undefined,
         permissions: this.getUserPermissions(user.role),
       };
     }
@@ -201,17 +216,50 @@ export class AuthService {
     const defaultRole = registerDto.tenantId ? 'cashier' : 'owner';
     const userRole = registerDto.role || defaultRole;
 
-    // Step 3: Try to create user in Auth0 first (optional - falls back to local if Auth0 unavailable)
-    let useAuth0Password = false;
+    // Step 3: Resolve the tenant (real provisioning, no fallback IDs).
+    // Owner self-registration creates tenant + first shop + chart of accounts;
+    // staff joining an existing tenant is validated against the DB.
+    if (registerDto.tenantId && registerDto.role === 'owner') {
+      throw new BadRequestException(
+        'Owners provision their own store; remove tenantId to create a new one',
+      );
+    }
+
+    let tenantId: string;
+    let shopId: string | undefined;
+    if (!registerDto.tenantId) {
+      const store = await this.tenantService.provisionStore(
+        registerDto.name,
+        registerDto.storeName,
+      );
+      tenantId = store.tenantId;
+      shopId = store.shopId;
+    } else {
+      try {
+        const ensured = await this.tenantService.ensureTenant(
+          registerDto.tenantId,
+        );
+        tenantId = ensured.tenantId;
+        shopId = ensured.shopId;
+      } catch {
+        throw new BadRequestException(
+          `Unknown tenant ${registerDto.tenantId} - ask the owner for a valid workspace ID`,
+        );
+      }
+    }
+
+    // Step 4: Create user in Auth0 (credential authority), then mirror into
+    // the local DB with the Auth0 user_id as externalId
+    let auth0UserId: string | null = null;
     try {
-      await this.auth0Service.createUser({
+      const auth0User = await this.auth0Service.createUser({
         email: registerDto.email,
         password: registerDto.password,
         name: registerDto.name,
         role: userRole,
-        tenantId: registerDto.tenantId || 'tenant-1',
+        tenantId,
       });
-      useAuth0Password = true; // Auth0 manages the password
+      auth0UserId = auth0User.auth0Id;
     } catch (error: unknown) {
       // If Auth0 creation fails, check if it's a user conflict
       const errorMessage =
@@ -226,39 +274,39 @@ export class AuthService {
       if (
         errorMessage.includes('Service not enabled') ||
         errorMessage.includes('access_denied') ||
-        errorMessage.includes('Management API')
+        errorMessage.includes('Management API') ||
+        errorMessage.includes('not configured')
       ) {
-        console.warn(
+        this.logger.warn(
           'Auth0 Management API not available, falling back to local-only registration',
         );
-        useAuth0Password = false; // Store password locally
       } else {
         // For other errors, still throw
         throw new BadRequestException(`Failed to create user: ${errorMessage}`);
       }
     }
 
-    // Step 4: Create user in local database
-    // Hash password if storing locally (not managed by Auth0)
-    const passwordToStore = useAuth0Password
-      ? 'auth0-managed'
-      : await bcrypt.hash(registerDto.password, 10); // Hash password for local storage
+    // Step 5: Create user in local database (source of truth for tenant/role/status)
+    // Password is mirrored as a bcrypt hash so API login works even when Auth0
+    // rejects the direct grant (ROPG is disabled on new tenants).
+    const passwordToStore = await bcrypt.hash(registerDto.password, 10);
 
     const localUser = (await this.usersService.create({
       email: registerDto.email,
       name: registerDto.name,
       password: passwordToStore,
       role: userRole,
-      tenantId: registerDto.tenantId || 'tenant-1',
       phone: registerDto.phone,
-    })) as UserWithPassword;
+      externalId: auth0UserId || undefined,
+    }, tenantId)) as UserWithPassword;
 
-    // Step 5: Generate JWT with full context
+    // Step 6: Generate JWT with full context
     const permissions = this.getUserPermissions(localUser.role);
     const payload = {
       email: localUser.email,
       sub: localUser.id,
       tenantId: localUser.tenantId,
+      shopId,
       role: localUser.role,
       permissions: permissions,
     };
@@ -271,6 +319,7 @@ export class AuthService {
         name: localUser.name,
         role: localUser.role,
         tenantId: localUser.tenantId,
+        shopId,
         permissions: permissions,
       },
     };
@@ -285,60 +334,6 @@ export class AuthService {
   }
 
   private getUserPermissions(role: string): string[] {
-    const rolePermissions: Record<string, string[]> = {
-      owner: [
-        'user:create',
-        'user:read',
-        'user:update',
-        'user:delete',
-        'product:create',
-        'product:read',
-        'product:update',
-        'product:delete',
-        'inventory:create',
-        'inventory:read',
-        'inventory:update',
-        'inventory:delete',
-        'sale:create',
-        'sale:read',
-        'sale:update',
-        'sale:delete',
-        'report:read',
-        'report:export',
-        'system:settings:update',
-        'tenant:manage',
-        'device:manage',
-        'session:manage',
-      ],
-      manager: [
-        'user:read',
-        'user:update',
-        'product:create',
-        'product:read',
-        'product:update',
-        'product:delete',
-        'inventory:create',
-        'inventory:read',
-        'inventory:update',
-        'inventory:delete',
-        'sale:create',
-        'sale:read',
-        'sale:update',
-        'sale:delete',
-        'report:read',
-        'report:export',
-        'device:manage',
-        'session:manage',
-      ],
-      cashier: [
-        'product:read',
-        'inventory:read',
-        'sale:create',
-        'sale:read',
-        'report:read',
-      ],
-    };
-
-    return rolePermissions[role] || [];
+    return ROLE_PERMISSIONS[role as Role] || [];
   }
 }

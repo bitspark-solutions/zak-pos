@@ -7,6 +7,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
+import { CurrentTenant } from '../auth/decorators/current-tenant.decorator';
 import { Permission, Role } from '../auth/enums/permissions.enum';
 
 @Controller('users')
@@ -17,36 +18,39 @@ export class UsersController {
   @Post()
   @Roles(Role.ADMIN, Role.OWNER)
   @RequirePermissions(Permission.USER_CREATE)
-  create(@Body() createUserDto: CreateUserDto) {
-    return this.usersService.create(createUserDto);
+  create(@Body() createUserDto: CreateUserDto, @CurrentTenant() tenantId: string) {
+    return this.usersService.createForTenant(createUserDto, tenantId);
   }
 
   @Get()
   @Roles(Role.ADMIN, Role.OWNER, Role.MANAGER)
   @RequirePermissions(Permission.USER_READ)
-  findAll() {
-    return this.usersService.findAll();
+  findAll(@CurrentTenant() tenantId: string) {
+    return this.usersService.findAll(tenantId);
   }
 
   @Get(':id')
   @Roles(Role.ADMIN, Role.OWNER, Role.MANAGER)
   @RequirePermissions(Permission.USER_READ)
-  findOne(@Param('id') id: string) {
-    return this.usersService.findOne(id);
+  findOne(@Param('id') id: string, @CurrentTenant() tenantId: string) {
+    return this.usersService.findOne(id, tenantId);
   }
 
   @Patch(':id')
   @Roles(Role.ADMIN, Role.OWNER, Role.MANAGER)
   @RequirePermissions(Permission.USER_UPDATE)
-  update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
-    return this.usersService.update(id, updateUserDto);
+  update(
+    @Param('id') id: string,
+    @Body() updateUserDto: UpdateUserDto,
+    @CurrentTenant() tenantId: string,
+  ) {
+    return this.usersService.update(id, updateUserDto, tenantId);
   }
 
   @Delete(':id')
   @Roles(Role.ADMIN, Role.OWNER)
   @RequirePermissions(Permission.USER_DELETE)
-  remove(@Param('id') id: string) {
-    return this.usersService.remove(id);
+  remove(@Param('id') id: string, @CurrentTenant() tenantId: string) {
+    return this.usersService.remove(id, tenantId);
   }
 }
-

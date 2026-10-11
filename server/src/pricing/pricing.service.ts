@@ -40,19 +40,19 @@ export class PricingService {
     lines: CartLineItem[],
     tenantId: string,
   ): Promise<PriceCalculation> {
-    const { prisma } = this.databaseService.getPrisma();
-
     // Get all tax IDs from lines
     const taxIds = [...new Set(lines.filter((l) => l.taxId).map((l) => l.taxId))] as string[];
 
-    // Fetch taxes
-    const taxes = await prisma.tax.findMany({
-      where: {
-        id: { in: taxIds },
-        tenantId,
-        isActive: true,
-      },
-    });
+    // Fetch taxes (RLS-scoped; tenantId filter kept for defense in depth)
+    const taxes = await this.databaseService.withTenant(tenantId, (prisma) =>
+      prisma.tax.findMany({
+        where: {
+          id: { in: taxIds },
+          tenantId,
+          isActive: true,
+        },
+      }),
+    );
 
     const taxMap = new Map<string, any>(taxes.map((t) => [t.id, t]));
 
@@ -125,11 +125,15 @@ export class PricingService {
     };
   }
 
+  // tenantId is an optional trailing param to stay source-compatible with
+  // existing callers (cart.service.ts); it is REQUIRED whenever taxId is set,
+  // since the tax lookup now runs through the RLS-scoped withTenant helper.
   async calculateLinePrice(
     unitPrice: number,
     qty: number,
     discount: number,
     taxId?: string,
+    tenantId?: string,
   ): Promise<{ lineTotal: number; taxAmount: number }> {
     if (!taxId) {
       return {
@@ -138,11 +142,17 @@ export class PricingService {
       };
     }
 
-    const { prisma } = this.databaseService.getPrisma();
+    if (!tenantId) {
+      throw new Error(
+        'PricingService.calculateLinePrice requires a tenantId when taxId is provided (RLS-scoped tax lookup)',
+      );
+    }
 
-    const tax = await prisma.tax.findUnique({
-      where: { id: taxId },
-    });
+    const tax = await this.databaseService.withTenant(tenantId, (prisma) =>
+      prisma.tax.findUnique({
+        where: { id: taxId },
+      }),
+    );
 
     if (!tax) {
       return {

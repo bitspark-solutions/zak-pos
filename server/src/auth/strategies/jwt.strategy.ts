@@ -1,10 +1,12 @@
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PassportStrategy } from '@nestjs/passport';
-import { Injectable } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { DatabaseService } from '../../database/database.service';
+import { ROLE_PERMISSIONS, Role } from '../enums/permissions.enum';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor() {
+  constructor(private databaseService: DatabaseService) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
@@ -13,13 +15,30 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: any) {
+    // Token signature is necessary but not sufficient: the local DB is the
+    // source of truth, so every request re-reads tenant/role/status.
+    const user = await this.databaseService
+      .getPrisma()
+      .prisma.user.findUnique({ where: { id: payload.sub } });
+
+    if (!user) {
+      throw new UnauthorizedException('User no longer exists');
+    }
+    if (user.status !== 'active') {
+      throw new UnauthorizedException('User account is disabled');
+    }
+
+    // Permissions come from the current DB role, not the token snapshot
+    const permissions =
+      ROLE_PERMISSIONS[user.role as Role] || payload.permissions || [];
+
     return {
-      id: payload.sub,
-      email: payload.email,
-      tenantId: payload.tenantId,
-      role: payload.role,
-      permissions: payload.permissions || [],
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      tenantId: user.tenantId,
+      role: user.role,
+      permissions,
     };
   }
 }
-

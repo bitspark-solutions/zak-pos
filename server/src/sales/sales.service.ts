@@ -1,23 +1,25 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { randomUUID } from 'crypto';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import { CartService } from '../cart/cart.service';
 import { InventoryService } from '../inventory/inventory.service';
+import { TenantService } from '../auth/tenant.service';
 import type { CommitSaleDto, RefundSaleDto, ISale, ISaleLine } from './interfaces/sales.interface';
 
 @Injectable()
 export class SalesService {
+  private readonly logger = new Logger(SalesService.name);
+
   constructor(
     private readonly databaseService: DatabaseService,
     private readonly cartService: CartService,
     private readonly inventoryService: InventoryService,
+    private readonly tenantService: TenantService,
   ) {}
 
-  async commitSale(dto: CommitSaleDto): Promise<{ sale: ISale; lines: ISaleLine[] }> {
-    const { prisma } = this.databaseService.getPrisma();
-
-    // Get cart
-    const cart = await this.cartService.findByToken(dto.cartToken);
+  async commitSale(dto: CommitSaleDto, tenantId: string): Promise<{ sale: ISale; lines: ISaleLine[] }> {
+    // Get cart (tenant ownership is verified inside findByToken)
+    const cart = await this.cartService.findByToken(dto.cartToken, tenantId);
 
     if (cart.status !== 'tendered') {
       throw new BadRequestException('Cart must be tendered before commit');
@@ -33,7 +35,8 @@ export class SalesService {
       throw new BadRequestException('Insufficient payment amount');
     }
 
-    return await prisma.$transaction(async (tx) => {
+    // withTenant provides the outer interactive transaction with app.tenant_id set (RLS active).
+    return this.databaseService.withTenant(tenantId, async (tx) => {
       // 1. Create Sale record
       const sale = await tx.sale.create({
         data: {
@@ -96,6 +99,8 @@ export class SalesService {
           })),
           'SALE',
           sale.id,
+          cart.tenantId,
+          tx,
         );
       } catch (error) {
         throw new BadRequestException(`Failed to deduct inventory: ${error.message}`);
@@ -120,159 +125,153 @@ export class SalesService {
       await this.createSaleJournalEntries(tx, cart, sale.id, dto.paymentMethod);
 
       // 6. Complete the cart
-      await this.cartService.complete(dto.cartToken);
+      await this.cartService.complete(dto.cartToken, tenantId);
 
       return { sale: this.mapToSale(sale), lines: saleLines };
     });
   }
 
+  private round2(value: number): number {
+    return Math.round(value * 100) / 100;
+  }
+
   private async createSaleJournalEntries(
-    tx: any,
+    tx: Prisma.TransactionClient,
     cart: any,
     saleId: string,
     paymentMethod: string,
   ): Promise<void> {
     const tenantId = cart.tenantId;
+    const accounts = await this.tenantService.seedAccounts(tx, tenantId);
+    const now = new Date();
 
-    // Get default accounts (in production, these would be configurable)
-    // For now, we'll create simple journal entries
-    const cashAccount = await tx.account.findFirst({
-      where: { tenantId, code: '1000' }, // Cash account
-    });
-
-    const salesRevenueAccount = await tx.account.findFirst({
-      where: { tenantId, code: '4000' }, // Sales revenue
-    });
-
-    const cogsAccount = await tx.account.findFirst({
-      where: { tenantId, code: '5000' }, // COGS
-    });
-
-    const inventoryAccount = await tx.account.findFirst({
-      where: { tenantId, code: '1500' }, // Inventory
-    });
-
-    const vatPayableAccount = await tx.account.findFirst({
-      where: { tenantId, code: '2200' }, // VAT Payable
-    });
-
-    // Create main journal entry for the sale
+    // Revenue journal: Dr Cash (total) / Cr Sales Revenue (net of discount) + Cr VAT Payable
     const journal = await tx.journal.create({
       data: {
         tenantId,
-        date: new Date(),
+        date: now,
         description: `Sale ${saleId}`,
         source: 'SALE',
         referenceType: 'sale',
         referenceId: saleId,
         createdBy: cart.cashierId,
         status: 'posted',
-        postedAt: new Date(),
       },
     });
 
-    // Debit: Cash/Receivable
-    if (cashAccount) {
-      await tx.journalLine.create({
-        data: {
-          journalId: journal.id,
-          accountId: cashAccount.id,
-          debit: cart.total,
-          credit: 0,
-        },
-      });
-    }
+    const revenue = this.round2(cart.subtotal - cart.discount);
+    const vat = this.round2(cart.tax);
 
-    // Credit: Sales Revenue (exclusive of VAT)
-    if (salesRevenueAccount) {
-      await tx.journalLine.create({
-        data: {
-          journalId: journal.id,
-          accountId: salesRevenueAccount.id,
-          debit: 0,
-          credit: cart.subtotal - cart.discount,
-        },
-      });
-    }
-
-    // Credit: VAT Payable
-    if (vatPayableAccount && cart.tax > 0) {
-      await tx.journalLine.create({
-        data: {
-          journalId: journal.id,
-          accountId: vatPayableAccount.id,
-          debit: 0,
-          credit: cart.tax,
-        },
-      });
-    }
-
-    // Create COGS journal entry
-    const cogsJournal = await tx.journal.create({
+    await tx.journalLine.create({
       data: {
-        tenantId,
-        date: new Date(),
-        description: `COGS for Sale ${saleId}`,
-        source: 'COGS',
-        referenceType: 'sale',
-        referenceId: saleId,
-        createdBy: cart.cashierId,
-        status: 'posted',
-        postedAt: new Date(),
+        journalId: journal.id,
+        accountId: accounts.get('1000')!,
+        debit: cart.total,
+        credit: 0,
+        memo: `Payment method: ${paymentMethod}`,
       },
     });
 
-    // Estimate COGS (in production, use actual cost from inventory)
-    const estimatedCogs = cart.subtotal * 0.4; // 40% cost assumption
-
-    // Debit: COGS
-    if (cogsAccount) {
+    if (revenue > 0) {
       await tx.journalLine.create({
         data: {
-          journalId: cogsJournal.id,
-          accountId: cogsAccount.id,
-          debit: estimatedCogs,
-          credit: 0,
+          journalId: journal.id,
+          accountId: accounts.get('4000')!,
+          debit: 0,
+          credit: revenue,
         },
       });
     }
 
-    // Credit: Inventory
-    if (inventoryAccount) {
+    if (vat > 0) {
+      await tx.journalLine.create({
+        data: {
+          journalId: journal.id,
+          accountId: accounts.get('2200')!,
+          debit: 0,
+          credit: vat,
+        },
+      });
+    }
+
+    // COGS journal at real weighted-average cost from inventory
+    let totalCogs = 0;
+    for (const line of cart.lines) {
+      const inventory = await tx.inventory.findFirst({
+        where: {
+          shopId: cart.shopId,
+          productId: line.productId,
+          variantId: line.variantId || null,
+          product: { tenantId },
+        },
+      });
+
+      if (inventory) {
+        totalCogs += line.qty * Number(inventory.avgCost);
+      } else {
+        this.logger.warn(
+          `No inventory record for product ${line.productId} in shop ${cart.shopId}; COGS excludes this line`,
+        );
+      }
+    }
+    totalCogs = this.round2(totalCogs);
+
+    if (totalCogs > 0) {
+      const cogsJournal = await tx.journal.create({
+        data: {
+          tenantId,
+          date: now,
+          description: `COGS for Sale ${saleId}`,
+          source: 'COGS',
+          referenceType: 'sale',
+          referenceId: saleId,
+          createdBy: cart.cashierId,
+          status: 'posted',
+        },
+      });
+
       await tx.journalLine.create({
         data: {
           journalId: cogsJournal.id,
-          accountId: inventoryAccount.id,
+          accountId: accounts.get('5000')!,
+          debit: totalCogs,
+          credit: 0,
+        },
+      });
+
+      await tx.journalLine.create({
+        data: {
+          journalId: cogsJournal.id,
+          accountId: accounts.get('1500')!,
           debit: 0,
-          credit: estimatedCogs,
+          credit: totalCogs,
         },
       });
     }
   }
 
-  async findAll(tenantId?: string, shopId?: string): Promise<ISale[]> {
-    const { prisma } = this.databaseService.getPrisma();
-
-    const where: any = {};
-    if (tenantId) where.tenantId = tenantId;
+  async findAll(tenantId: string, shopId?: string): Promise<ISale[]> {
+    const where: any = { tenantId };
     if (shopId) where.shopId = shopId;
 
-    const sales = await prisma.sale.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-    });
+    const sales = await this.databaseService.withTenant(tenantId, (tx) =>
+      tx.sale.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+      }),
+    );
 
     return sales.map((s) => this.mapToSale(s));
   }
 
-  async findById(id: string): Promise<ISale> {
-    const { prisma } = this.databaseService.getPrisma();
-
-    const sale = await prisma.sale.findUnique({
-      where: { id },
-      include: { saleLines: true },
-    });
+  async findById(id: string, tenantId: string): Promise<ISale> {
+    const sale = await this.databaseService.withTenant(tenantId, (tx) =>
+      tx.sale.findFirst({
+        where: { id, tenantId },
+        include: { saleLines: true },
+      }),
+    );
 
     if (!sale) {
       throw new NotFoundException(`Sale with ID ${id} not found`);
@@ -281,13 +280,13 @@ export class SalesService {
     return this.mapToSale(sale);
   }
 
-  async findByIdWithLines(id: string): Promise<{ sale: ISale; lines: ISaleLine[] }> {
-    const { prisma } = this.databaseService.getPrisma();
-
-    const sale = await prisma.sale.findUnique({
-      where: { id },
-      include: { saleLines: true },
-    });
+  async findByIdWithLines(id: string, tenantId: string): Promise<{ sale: ISale; lines: ISaleLine[] }> {
+    const sale = await this.databaseService.withTenant(tenantId, (tx) =>
+      tx.sale.findFirst({
+        where: { id, tenantId },
+        include: { saleLines: true },
+      }),
+    );
 
     if (!sale) {
       throw new NotFoundException(`Sale with ID ${id} not found`);
@@ -310,49 +309,50 @@ export class SalesService {
     };
   }
 
-  async refund(id: string, dto: RefundSaleDto): Promise<ISale> {
-    const { prisma } = this.databaseService.getPrisma();
+  async refund(id: string, dto: RefundSaleDto, tenantId: string): Promise<ISale> {
+    // One RLS-scoped transaction: read → insert return → flip sale status.
+    return this.databaseService.withTenant(tenantId, async (tx) => {
+      const sale = await tx.sale.findFirst({
+        where: { id, tenantId },
+      });
 
-    const sale = await prisma.sale.findUnique({
-      where: { id },
+      if (!sale) {
+        throw new NotFoundException(`Sale with ID ${id} not found`);
+      }
+
+      if (sale.status !== 'completed') {
+        throw new BadRequestException('Can only refund completed sales');
+      }
+
+      if (sale.paymentStatus !== 'paid') {
+        throw new BadRequestException('Can only refund paid sales');
+      }
+
+      // Create return record (returns are RLS-scoped via the parent sale)
+      await tx.return.create({
+        data: {
+          saleId: id,
+          subtotal: sale.subtotal,
+          tax: sale.tax,
+          total: sale.total,
+          refundMethod: dto.refundMethod,
+          handlerId: sale.cashierId,
+          status: 'posted',
+          postedAt: new Date(),
+        },
+      });
+
+      // Update sale status
+      const updatedSale = await tx.sale.update({
+        where: { id },
+        data: {
+          status: 'refunded',
+          paymentStatus: 'refunded',
+        },
+      });
+
+      return this.mapToSale(updatedSale);
     });
-
-    if (!sale) {
-      throw new NotFoundException(`Sale with ID ${id} not found`);
-    }
-
-    if (sale.status !== 'completed') {
-      throw new BadRequestException('Can only refund completed sales');
-    }
-
-    if (sale.paymentStatus !== 'paid') {
-      throw new BadRequestException('Can only refund paid sales');
-    }
-
-    // Create return record
-    await prisma.return.create({
-      data: {
-        saleId: id,
-        subtotal: sale.subtotal,
-        tax: sale.tax,
-        total: sale.total,
-        refundMethod: dto.refundMethod,
-        handlerId: sale.cashierId,
-        status: 'posted',
-        postedAt: new Date(),
-      },
-    });
-
-    // Update sale status
-    const updatedSale = await prisma.sale.update({
-      where: { id },
-      data: {
-        status: 'refunded',
-        paymentStatus: 'refunded',
-      },
-    });
-
-    return this.mapToSale(updatedSale);
   }
 
   private mapToSale(sale: any): ISale {

@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import { StockQueryDto, AdjustStockDto, InventoryMovementQueryDto } from './dto/inventory.dto';
 import { IInventoryWithProduct, IInventoryMovement, StockCheckResult } from './interfaces/inventory.interface';
@@ -7,35 +8,37 @@ import { IInventoryWithProduct, IInventoryMovement, StockCheckResult } from './i
 export class InventoryService {
   constructor(private readonly databaseService: DatabaseService) {}
 
-  async getStock(query: StockQueryDto): Promise<IInventoryWithProduct[]> {
-    const { prisma } = this.databaseService.getPrisma();
-
-    const where: any = {};
+  async getStock(query: StockQueryDto, tenantId: string): Promise<IInventoryWithProduct[]> {
+    const where: any = {
+      product: { tenantId },
+    };
 
     if (query.shopId) where.shopId = query.shopId;
     if (query.productId) where.productId = query.productId;
     if (query.variantId) where.variantId = query.variantId;
 
-    const inventory = await prisma.inventory.findMany({
-      where,
-      include: {
-        product: {
-          select: {
-            id: true,
-            name: true,
-            sku: true,
-            unit: true,
+    const inventory = await this.databaseService.withTenant(tenantId, (prisma) =>
+      prisma.inventory.findMany({
+        where,
+        include: {
+          product: {
+            select: {
+              id: true,
+              name: true,
+              sku: true,
+              unit: true,
+            },
+          },
+          variant: {
+            select: {
+              id: true,
+              attributes: true,
+            },
           },
         },
-        variant: {
-          select: {
-            id: true,
-            attributes: true,
-          },
-        },
-      },
-      orderBy: { updatedAt: 'desc' },
-    });
+        orderBy: { updatedAt: 'desc' },
+      }),
+    );
 
     return inventory.map((inv) => ({
       id: inv.id,
@@ -57,16 +60,17 @@ export class InventoryService {
   async getStockForProducts(
     shopId: string,
     productIds: string[],
-    tenantId?: string,
+    tenantId: string,
   ): Promise<StockCheckResult[]> {
-    const { prisma } = this.databaseService.getPrisma();
-
-    const inventory = await prisma.inventory.findMany({
-      where: {
-        shopId,
-        productId: { in: productIds },
-      },
-    });
+    const inventory = await this.databaseService.withTenant(tenantId, (prisma) =>
+      prisma.inventory.findMany({
+        where: {
+          shopId,
+          productId: { in: productIds },
+          product: { tenantId },
+        },
+      }),
+    );
 
     // Create a map for quick lookup
     const stockMap = new Map<string, number>();
@@ -83,11 +87,15 @@ export class InventoryService {
     }));
   }
 
-  async adjustStock(dto: AdjustStockDto, userId?: string): Promise<any> {
-    const { prisma } = this.databaseService.getPrisma();
-    const tenantId = dto.tenantId || 'tenant-1';
+  async adjustStock(dto: AdjustStockDto, tenantId: string, userId?: string): Promise<any> {
+    return this.databaseService.withTenant(tenantId, async (tx) => {
+      const product = await tx.product.findFirst({
+        where: { id: dto.productId, tenantId },
+      });
+      if (!product) {
+        throw new NotFoundException(`Product with ID ${dto.productId} not found`);
+      }
 
-    return await prisma.$transaction(async (tx) => {
       // Get or create inventory record
       let inventory = await tx.inventory.findFirst({
         where: {
@@ -190,14 +198,11 @@ export class InventoryService {
     });
   }
 
-  async getMovements(query: InventoryMovementQueryDto): Promise<IInventoryMovement[]> {
-    const { prisma } = this.databaseService.getPrisma();
-
-    const where: any = {};
+  async getMovements(query: InventoryMovementQueryDto, tenantId: string): Promise<IInventoryMovement[]> {
+    const where: any = { tenantId };
 
     if (query.shopId) where.shopId = query.shopId;
     if (query.productId) where.productId = query.productId;
-    if (query.tenantId) where.tenantId = query.tenantId;
 
     if (query.startDate || query.endDate) {
       where.createdAt = {};
@@ -205,11 +210,13 @@ export class InventoryService {
       if (query.endDate) where.createdAt.lte = new Date(query.endDate);
     }
 
-    const movements = await prisma.inventoryMovement.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-    });
+    const movements = await this.databaseService.withTenant(tenantId, (prisma) =>
+      prisma.inventoryMovement.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+      }),
+    );
 
     return movements.map((m) => ({
       id: m.id,
@@ -230,39 +237,41 @@ export class InventoryService {
   async checkAvailability(
     shopId: string,
     items: { productId: string; variantId?: string; quantity: number }[],
+    tenantId: string,
   ): Promise<{ available: boolean; results: StockCheckResult[] }> {
-    const results: StockCheckResult[] = [];
-    let allAvailable = true;
+    return this.databaseService.withTenant(tenantId, async (prisma) => {
+      const results: StockCheckResult[] = [];
+      let allAvailable = true;
 
-    const { prisma } = this.databaseService.getPrisma();
+      for (const item of items) {
+        const inventory = await prisma.inventory.findFirst({
+          where: {
+            shopId,
+            productId: item.productId,
+            variantId: item.variantId || null,
+            product: { tenantId },
+          },
+        });
 
-    for (const item of items) {
-      const inventory = await prisma.inventory.findFirst({
-        where: {
-          shopId,
+        const qtyOnHand = inventory ? Number(inventory.quantityOnHand) : 0;
+        const qtyReserved = inventory ? Number(inventory.quantityReserved || 0) : 0;
+        const available = qtyOnHand - qtyReserved;
+
+        results.push({
           productId: item.productId,
-          variantId: item.variantId || null,
-        },
-      });
+          variantId: item.variantId,
+          available,
+          reserved: qtyReserved,
+          quantityOnHand: qtyOnHand,
+        });
 
-      const qtyOnHand = inventory ? Number(inventory.quantityOnHand) : 0;
-      const qtyReserved = inventory ? Number(inventory.quantityReserved || 0) : 0;
-      const available = qtyOnHand - qtyReserved;
-
-      results.push({
-        productId: item.productId,
-        variantId: item.variantId,
-        available,
-        reserved: qtyReserved,
-        quantityOnHand: qtyOnHand,
-      });
-
-      if (available < item.quantity) {
-        allAvailable = false;
+        if (available < item.quantity) {
+          allAvailable = false;
+        }
       }
-    }
 
-    return { available: allAvailable, results };
+      return { available: allAvailable, results };
+    });
   }
 
   async deductStock(
@@ -270,10 +279,12 @@ export class InventoryService {
     items: { productId: string; variantId?: string; quantity: number; unitCost?: number }[],
     referenceType: string,
     referenceId: string,
+    tenantId: string,
+    externalTx?: Prisma.TransactionClient,
   ): Promise<void> {
-    const { prisma } = this.databaseService.getPrisma();
-
-    await prisma.$transaction(async (tx) => {
+    // externalTx keeps the deduction atomic with a caller's transaction (e.g. sale commit);
+    // the RLS tenant GUC is already set on that connection.
+    const run = async (tx: Prisma.TransactionClient) => {
       for (const item of items) {
         // Get inventory
         let inventory = await tx.inventory.findFirst({
@@ -281,6 +292,7 @@ export class InventoryService {
             shopId,
             productId: item.productId,
             variantId: item.variantId || null,
+            product: { tenantId },
           },
         });
 
@@ -304,7 +316,7 @@ export class InventoryService {
         // Record movement
         await tx.inventoryMovement.create({
           data: {
-            tenantId: inventory.shopId, // Using shopId as tenantId for now
+            tenantId,
             shopId,
             productId: item.productId,
             variantId: item.variantId || null,
@@ -316,6 +328,12 @@ export class InventoryService {
           },
         });
       }
-    });
+    };
+
+    if (externalTx) {
+      await run(externalTx);
+      return;
+    }
+    await this.databaseService.withTenant(tenantId, run);
   }
 }

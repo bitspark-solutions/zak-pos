@@ -3,6 +3,8 @@ import { JwtService } from '@nestjs/jwt';
 import { AuthService } from './auth.service';
 import { UsersService } from '../users/users.service';
 import { Auth0Service } from './auth0.service';
+import { DatabaseService } from '../database/database.service';
+import { TenantService } from './tenant.service';
 import * as bcrypt from 'bcryptjs';
 
 describe('AuthService', () => {
@@ -18,6 +20,7 @@ describe('AuthService', () => {
     password: 'hashedPassword',
     role: 'cashier',
     tenantId: 'tenant-1',
+    status: 'active',
   };
 
   const mockUsersService = {
@@ -31,17 +34,31 @@ describe('AuthService', () => {
     verify: jest.fn(),
   };
 
+  const mockPrisma = {
+    user: {
+      update: jest.fn().mockResolvedValue(undefined),
+    },
+  };
+
+  const mockDatabaseService = {
+    getPrisma: jest.fn().mockReturnValue({ prisma: mockPrisma }),
+  };
+
   const mockAuth0Service = {
     validateUser: jest.fn(),
     createUser: jest.fn(),
     getUser: jest.fn(),
+    findUserByEmail: jest.fn(),
     updateUser: jest.fn(),
     deleteUser: jest.fn(),
     getUsersByTenant: jest.fn(),
-    assignRoleToUser: jest.fn(),
-    createRole: jest.fn(),
-    getRoles: jest.fn(),
     getConfig: jest.fn(),
+  };
+
+  const mockTenantService = {
+    provisionStore: jest.fn(),
+    ensureTenant: jest.fn(),
+    seedAccounts: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -60,6 +77,14 @@ describe('AuthService', () => {
           provide: Auth0Service,
           useValue: mockAuth0Service,
         },
+        {
+          provide: DatabaseService,
+          useValue: mockDatabaseService,
+        },
+        {
+          provide: TenantService,
+          useValue: mockTenantService,
+        },
       ],
     }).compile();
 
@@ -74,7 +99,7 @@ describe('AuthService', () => {
   });
 
   describe('validateUser', () => {
-    it('should return user data when Auth0 and local user are valid', async () => {
+    it('should return user from local DB and backfill externalId when Auth0 validates', async () => {
       const email = 'test@example.com';
       const password = 'password123';
 
@@ -95,6 +120,10 @@ describe('AuthService', () => {
 
       expect(mockAuth0Service.validateUser).toHaveBeenCalledWith(email, password);
       expect(mockUsersService.findByEmail).toHaveBeenCalledWith(email);
+      expect(mockPrisma.user.update).toHaveBeenCalledWith({
+        where: { id: mockUser.id },
+        data: { externalId: auth0User.userInfo.sub },
+      });
       expect(result).toEqual({
         id: mockUser.id,
         email: mockUser.email,
@@ -115,7 +144,7 @@ describe('AuthService', () => {
       expect(result).toBeNull();
     });
 
-    it('should throw error when user not found in local database', async () => {
+    it('should reject login when Auth0 user has no local DB record', async () => {
       const email = 'test@example.com';
       const password = 'password123';
 
@@ -132,7 +161,28 @@ describe('AuthService', () => {
       mockAuth0Service.validateUser.mockResolvedValue(auth0User);
       mockUsersService.findByEmail.mockResolvedValue(null);
 
-      await expect(service.validateUser(email, password)).rejects.toThrow('Failed to get or create user in PostgreSQL');
+      await expect(service.validateUser(email, password)).resolves.toBeNull();
+      expect(mockUsersService.create).not.toHaveBeenCalled();
+    });
+
+    it('should reject login when local user is disabled', async () => {
+      const email = 'test@example.com';
+      const password = 'password123';
+
+      mockAuth0Service.validateUser.mockResolvedValue({
+        accessToken: 't',
+        idToken: 't',
+        userInfo: { sub: 'auth0|1', email, name: 'Test User' },
+      });
+      mockUsersService.findByEmail.mockResolvedValue({
+        ...mockUser,
+        externalId: 'auth0|1',
+        status: 'suspended',
+      });
+
+      await expect(service.validateUser(email, password)).rejects.toThrow(
+        'User account is disabled',
+      );
     });
 
   });
@@ -214,6 +264,7 @@ describe('AuthService', () => {
       };
       const mockToken = 'mock-jwt-token';
 
+      mockTenantService.ensureTenant.mockResolvedValue({ tenantId: 'tenant-1', shopId: 'shop-1' });
       mockUsersService.findByEmail.mockResolvedValue(null);
       mockAuth0Service.createUser.mockResolvedValue(auth0User);
       mockUsersService.create.mockResolvedValue(createdUser);
@@ -221,6 +272,7 @@ describe('AuthService', () => {
 
       const result = await service.register(registerDto);
 
+      expect(mockTenantService.ensureTenant).toHaveBeenCalledWith('tenant-1');
       expect(mockUsersService.findByEmail).toHaveBeenCalledWith(registerDto.email);
       expect(mockAuth0Service.createUser).toHaveBeenCalledWith({
         email: registerDto.email,
@@ -229,10 +281,22 @@ describe('AuthService', () => {
         role: registerDto.role,
         tenantId: registerDto.tenantId
       });
-      expect(mockUsersService.create).toHaveBeenCalledWith({
-        ...registerDto,
-        password: expect.any(String), // hashed password
-      });
+      expect(mockUsersService.create).toHaveBeenCalledWith(
+        {
+          email: registerDto.email,
+          name: registerDto.name,
+          password: expect.any(String),
+          role: registerDto.role,
+          phone: undefined,
+          externalId: 'auth0|123456789',
+        },
+        registerDto.tenantId,
+      );
+      // Password is mirrored as a bcrypt hash even when Auth0 holds the account
+      const createCall = mockUsersService.create.mock.calls[0][0];
+      expect(
+        await bcrypt.compare(registerDto.password, createCall.password),
+      ).toBe(true);
       expect(result).toEqual({
         access_token: mockToken,
         user: {
@@ -241,9 +305,76 @@ describe('AuthService', () => {
           name: createdUser.name,
           role: createdUser.role,
           tenantId: createdUser.tenantId,
+          shopId: 'shop-1',
           permissions: expect.any(Array)
         },
       });
+    });
+
+    it('should provision a new store when an owner registers without a tenant', async () => {
+      const registerDto = {
+        email: 'owner@example.com',
+        password: 'password123',
+        name: 'Owner User',
+        storeName: 'Shuvo Mart',
+      };
+      const createdUser = {
+        id: '3',
+        email: registerDto.email,
+        name: registerDto.name,
+        role: 'owner',
+        tenantId: 'tenant-new',
+      };
+
+      mockTenantService.provisionStore.mockResolvedValue({
+        tenantId: 'tenant-new',
+        shopId: 'shop-new',
+        tenantName: 'Shuvo Mart',
+      });
+      mockUsersService.findByEmail.mockResolvedValue(null);
+      mockAuth0Service.createUser.mockResolvedValue({
+        id: 'auth0|owner',
+        email: registerDto.email,
+        name: registerDto.name,
+        role: 'owner',
+        tenantId: 'tenant-new',
+        auth0Id: 'auth0|owner',
+      });
+      mockUsersService.create.mockResolvedValue(createdUser);
+      mockJwtService.sign.mockReturnValue('mock-token');
+
+      const result = await service.register(registerDto);
+
+      expect(mockTenantService.provisionStore).toHaveBeenCalledWith(
+        registerDto.name,
+        'Shuvo Mart',
+      );
+      expect(mockTenantService.ensureTenant).not.toHaveBeenCalled();
+      expect(mockUsersService.create).toHaveBeenCalledWith(
+        expect.objectContaining({ role: 'owner', externalId: 'auth0|owner' }),
+        'tenant-new',
+      );
+      expect(result.user).toEqual(
+        expect.objectContaining({ tenantId: 'tenant-new', shopId: 'shop-new', role: 'owner' }),
+      );
+    });
+
+    it('should reject staff registration for an unknown tenant', async () => {
+      const registerDto = {
+        email: 'cashier@example.com',
+        password: 'password123',
+        name: 'Cashier',
+        role: 'cashier',
+        tenantId: 'does-not-exist',
+      };
+
+      mockUsersService.findByEmail.mockResolvedValue(null);
+      mockTenantService.ensureTenant.mockRejectedValue(new Error('Tenant does not exist'));
+
+      await expect(service.register(registerDto)).rejects.toThrow(
+        'Unknown tenant does-not-exist',
+      );
+      expect(mockAuth0Service.createUser).not.toHaveBeenCalled();
     });
 
     it('should hash password before storing when Auth0 is unavailable', async () => {
@@ -263,6 +394,7 @@ describe('AuthService', () => {
       };
 
       mockUsersService.findByEmail.mockResolvedValue(null);
+      mockTenantService.ensureTenant.mockResolvedValue({ tenantId: 'tenant-1', shopId: 'shop-1' });
       // Make Auth0 fail so it falls back to local password hashing
       mockAuth0Service.createUser.mockRejectedValue(new Error('Management API not enabled'));
       mockUsersService.create.mockResolvedValue(createdUser);

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { Prisma, Product } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import { CreateProductDto, UpdateProductDto, ProductQueryDto } from './dto/product.dto';
@@ -8,50 +8,51 @@ import { IProductWithDetails, PaginatedResult } from './interfaces/product.inter
 export class ProductService {
   constructor(private readonly databaseService: DatabaseService) {}
 
-  async create(createProductDto: CreateProductDto): Promise<IProductWithDetails> {
-    const { prisma } = this.databaseService.getPrisma();
+  async create(createProductDto: CreateProductDto, tenantId: string): Promise<IProductWithDetails> {
+    return this.databaseService.withTenant(tenantId, async (prisma) => {
+      // Check for duplicate SKU
+      const existing = await prisma.product.findFirst({
+        where: {
+          tenantId,
+          sku: createProductDto.sku,
+        },
+      });
 
-    // Check for duplicate SKU
-    const existing = await prisma.product.findFirst({
-      where: {
-        tenantId: createProductDto.tenantId || 'tenant-1',
-        sku: createProductDto.sku,
-      },
+      if (existing) {
+        throw new ConflictException(`Product with SKU ${createProductDto.sku} already exists`);
+      }
+
+      await this.validateTenantRefs(prisma, tenantId, createProductDto.categoryId, createProductDto.taxId);
+
+      const product = await prisma.product.create({
+        data: {
+          name: createProductDto.name,
+          sku: createProductDto.sku,
+          unit: createProductDto.unit || 'pcs',
+          basePrice: createProductDto.basePrice,
+          defaultCost: createProductDto.defaultCost || 0,
+          categoryId: createProductDto.categoryId,
+          taxId: createProductDto.taxId,
+          isWeighted: createProductDto.isWeighted || false,
+          tenantId,
+        },
+        include: {
+          category: true,
+          tax: true,
+          variants: true,
+          barcodes: true,
+        },
+      });
+
+      return this.mapToProductWithDetails(product);
     });
-
-    if (existing) {
-      throw new ConflictException(`Product with SKU ${createProductDto.sku} already exists`);
-    }
-
-    const product = await prisma.product.create({
-      data: {
-        name: createProductDto.name,
-        sku: createProductDto.sku,
-        unit: createProductDto.unit || 'pcs',
-        basePrice: createProductDto.basePrice,
-        defaultCost: createProductDto.defaultCost || 0,
-        categoryId: createProductDto.categoryId,
-        taxId: createProductDto.taxId,
-        isWeighted: createProductDto.isWeighted || false,
-        tenantId: createProductDto.tenantId || 'tenant-1',
-      },
-      include: {
-        category: true,
-        tax: true,
-        variants: true,
-        barcodes: true,
-      },
-    });
-
-    return this.mapToProductWithDetails(product);
   }
 
-  async findAll(query: ProductQueryDto, tenantId?: string): Promise<PaginatedResult<IProductWithDetails>> {
-    const { prisma } = this.databaseService.getPrisma();
+  async findAll(query: ProductQueryDto, tenantId: string): Promise<PaginatedResult<IProductWithDetails>> {
     const { page = 1, limit = 20, search, categoryId, isActive } = query;
 
     const where: Prisma.ProductWhereInput = {
-      tenantId: tenantId || 'tenant-1',
+      tenantId,
     };
 
     if (search) {
@@ -70,43 +71,45 @@ export class ProductService {
       where.isActive = isActive;
     }
 
-    const [data, total] = await Promise.all([
-      prisma.product.findMany({
-        where,
+    return this.databaseService.withTenant(tenantId, async (prisma) => {
+      const [data, total] = await Promise.all([
+        prisma.product.findMany({
+          where,
+          include: {
+            category: true,
+            tax: true,
+            variants: true,
+            barcodes: true,
+          },
+          skip: (page - 1) * limit,
+          take: limit,
+          orderBy: { createdAt: 'desc' },
+        }),
+        prisma.product.count({ where }),
+      ]);
+
+      return {
+        data: data.map((p) => this.mapToProductWithDetails(p)),
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      };
+    });
+  }
+
+  async findOne(id: string, tenantId: string): Promise<IProductWithDetails> {
+    const product = await this.databaseService.withTenant(tenantId, (prisma) =>
+      prisma.product.findFirst({
+        where: { id, tenantId },
         include: {
           category: true,
           tax: true,
           variants: true,
           barcodes: true,
         },
-        skip: (page - 1) * limit,
-        take: limit,
-        orderBy: { createdAt: 'desc' },
       }),
-      prisma.product.count({ where }),
-    ]);
-
-    return {
-      data: data.map((p) => this.mapToProductWithDetails(p)),
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-    };
-  }
-
-  async findOne(id: string): Promise<IProductWithDetails> {
-    const { prisma } = this.databaseService.getPrisma();
-
-    const product = await prisma.product.findUnique({
-      where: { id },
-      include: {
-        category: true,
-        tax: true,
-        variants: true,
-        barcodes: true,
-      },
-    });
+    );
 
     if (!product) {
       throw new NotFoundException(`Product with ID ${id} not found`);
@@ -115,26 +118,26 @@ export class ProductService {
     return this.mapToProductWithDetails(product);
   }
 
-  async findByBarcode(barcode: string, tenantId?: string): Promise<IProductWithDetails | null> {
-    const { prisma } = this.databaseService.getPrisma();
-
-    const barcodeRecord = await prisma.barcode.findFirst({
-      where: {
-        value: barcode,
-        ...(tenantId && { product: { tenantId } }),
-      },
-      include: {
-        product: {
-          include: {
-            category: true,
-            tax: true,
-            variants: true,
-            barcodes: true,
-          },
+  async findByBarcode(barcode: string, tenantId: string): Promise<IProductWithDetails | null> {
+    const barcodeRecord = await this.databaseService.withTenant(tenantId, (prisma) =>
+      prisma.barcode.findFirst({
+        where: {
+          value: barcode,
+          product: { tenantId },
         },
-        variant: true,
-      },
-    });
+        include: {
+          product: {
+            include: {
+              category: true,
+              tax: true,
+              variants: true,
+              barcodes: true,
+            },
+          },
+          variant: true,
+        },
+      }),
+    );
 
     if (!barcodeRecord) {
       return null;
@@ -143,57 +146,79 @@ export class ProductService {
     return this.mapToProductWithDetails(barcodeRecord.product);
   }
 
-  async update(id: string, updateProductDto: UpdateProductDto): Promise<IProductWithDetails> {
-    const { prisma } = this.databaseService.getPrisma();
+  async update(id: string, updateProductDto: UpdateProductDto, tenantId: string): Promise<IProductWithDetails> {
+    return this.databaseService.withTenant(tenantId, async (prisma) => {
+      const existing = await prisma.product.findFirst({ where: { id, tenantId } });
+      if (!existing) {
+        throw new NotFoundException(`Product with ID ${id} not found`);
+      }
 
-    const existing = await prisma.product.findUnique({ where: { id } });
-    if (!existing) {
-      throw new NotFoundException(`Product with ID ${id} not found`);
-    }
+      // Check for duplicate SKU if changing
+      if (updateProductDto.sku && updateProductDto.sku !== existing.sku) {
+        const duplicate = await prisma.product.findFirst({
+          where: {
+            tenantId: existing.tenantId,
+            sku: updateProductDto.sku,
+            id: { not: id },
+          },
+        });
+        if (duplicate) {
+          throw new ConflictException(`Product with SKU ${updateProductDto.sku} already exists`);
+        }
+      }
 
-    // Check for duplicate SKU if changing
-    if (updateProductDto.sku && updateProductDto.sku !== existing.sku) {
-      const duplicate = await prisma.product.findFirst({
-        where: {
-          tenantId: existing.tenantId,
-          sku: updateProductDto.sku,
-          id: { not: id },
+      await this.validateTenantRefs(prisma, tenantId, updateProductDto.categoryId, updateProductDto.taxId);
+
+      const product = await prisma.product.update({
+        where: { id },
+        data: updateProductDto,
+        include: {
+          category: true,
+          tax: true,
+          variants: true,
+          barcodes: true,
         },
       });
-      if (duplicate) {
-        throw new ConflictException(`Product with SKU ${updateProductDto.sku} already exists`);
-      }
-    }
 
-    const product = await prisma.product.update({
-      where: { id },
-      data: updateProductDto,
-      include: {
-        category: true,
-        tax: true,
-        variants: true,
-        barcodes: true,
-      },
+      return this.mapToProductWithDetails(product);
     });
-
-    return this.mapToProductWithDetails(product);
   }
 
-  async remove(id: string): Promise<{ success: boolean }> {
-    const { prisma } = this.databaseService.getPrisma();
+  async remove(id: string, tenantId: string): Promise<{ success: boolean }> {
+    return this.databaseService.withTenant(tenantId, async (prisma) => {
+      const existing = await prisma.product.findFirst({ where: { id, tenantId } });
+      if (!existing) {
+        throw new NotFoundException(`Product with ID ${id} not found`);
+      }
 
-    const existing = await prisma.product.findUnique({ where: { id } });
-    if (!existing) {
-      throw new NotFoundException(`Product with ID ${id} not found`);
-    }
+      // Soft delete
+      await prisma.product.update({
+        where: { id },
+        data: { isActive: false },
+      });
 
-    // Soft delete
-    await prisma.product.update({
-      where: { id },
-      data: { isActive: false },
+      return { success: true };
     });
+  }
 
-    return { success: true };
+  private async validateTenantRefs(
+    prisma: Prisma.TransactionClient,
+    tenantId: string,
+    categoryId?: string,
+    taxId?: string,
+  ): Promise<void> {
+    if (categoryId) {
+      const cat = await prisma.category.findFirst({ where: { id: categoryId, tenantId } });
+      if (!cat) {
+        throw new BadRequestException(`Category ${categoryId} does not belong to this tenant`);
+      }
+    }
+    if (taxId) {
+      const tax = await prisma.tax.findFirst({ where: { id: taxId, tenantId } });
+      if (!tax) {
+        throw new BadRequestException(`Tax ${taxId} does not belong to this tenant`);
+      }
+    }
   }
 
   private mapToProductWithDetails(
@@ -258,10 +283,5 @@ export class ProductService {
         isPrimary: b.isPrimary,
       })),
     };
-  }
-
-  // Helper to get Prisma client for transactions
-  getPrismaClient() {
-    return this.databaseService.getPrisma();
   }
 }

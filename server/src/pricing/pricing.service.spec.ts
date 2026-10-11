@@ -15,7 +15,7 @@ describe('PricingService', () => {
 
   beforeEach(async () => {
     const mockDatabaseService = {
-      getPrisma: jest.fn().mockReturnValue({ prisma: mockPrisma }),
+      withTenant: jest.fn((tenantId: string, fn: any) => fn(mockPrisma)),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -61,7 +61,7 @@ describe('PricingService', () => {
         inclusive: false,
       });
 
-      const result = await service.calculateLinePrice(100, 1, 0, 'tax-1');
+      const result = await service.calculateLinePrice(100, 1, 0, 'tax-1', 'tenant-1');
 
       expect(result.lineTotal).toBe(115);
       expect(result.taxAmount).toBe(15);
@@ -75,7 +75,7 @@ describe('PricingService', () => {
         inclusive: true,
       });
 
-      const result = await service.calculateLinePrice(115, 1, 0, 'tax-1');
+      const result = await service.calculateLinePrice(115, 1, 0, 'tax-1', 'tenant-1');
 
       // With 15% inclusive tax, base = 115/1.15 = 100, tax = 15
       expect(result.taxAmount).toBeCloseTo(15, 2);
@@ -85,12 +85,17 @@ describe('PricingService', () => {
     it('should return zero when tax not found', async () => {
       mockPrisma.tax.findUnique.mockResolvedValue(null);
 
-      const result = await service.calculateLinePrice(100, 1, 0, 'nonexistent-tax');
+      const result = await service.calculateLinePrice(100, 1, 0, 'nonexistent-tax', 'tenant-1');
 
       expect(result).toEqual({
         lineTotal: 100,
         taxAmount: 0,
       });
+    });
+
+    it('should throw when taxId is provided without tenantId', async () => {
+      await expect(service.calculateLinePrice(100, 1, 0, 'tax-1')).rejects.toThrow(/tenantId/);
+      expect(mockPrisma.tax.findUnique).not.toHaveBeenCalled();
     });
   });
 

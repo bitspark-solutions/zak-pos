@@ -1,21 +1,46 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { NotFoundException } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { DatabaseService } from '../database/database.service';
-import * as bcrypt from 'bcryptjs';
 
 describe('UsersService', () => {
   let service: UsersService;
-  let databaseService: DatabaseService;
+
+  const mockUser = {
+    id: '123',
+    email: 'test@example.com',
+    password: 'hashedpassword',
+    name: 'Test User',
+    role: 'cashier',
+    tenantId: 'tenant-1',
+    status: 'active',
+    locale: 'en',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  const mockPrisma = {
+    user: {
+      create: jest.fn(),
+      findMany: jest.fn(),
+      findFirst: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
+    },
+  };
+
+  const mockDatabaseService = {
+    // admin-path dependencies
+    createUser: jest.fn(),
+    findUserByEmail: jest.fn(),
+    findAllUsers: jest.fn(),
+    // tenant-path (RLS) dependency
+    withTenant: jest.fn((tenantId: string, fn: any) => fn(mockPrisma)),
+  };
 
   beforeEach(async () => {
-    const mockDatabaseService = {
-      createUser: jest.fn(),
-      findUserByEmail: jest.fn(),
-      findUserById: jest.fn(),
-      updateUser: jest.fn(),
-      deleteUser: jest.fn(),
-      findAllUsers: jest.fn(),
-    };
+    jest.clearAllMocks();
+    mockDatabaseService.withTenant.mockImplementation((tenantId: string, fn: any) => fn(mockPrisma));
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -28,284 +53,169 @@ describe('UsersService', () => {
     }).compile();
 
     service = module.get<UsersService>(UsersService);
-    databaseService = module.get<DatabaseService>(DatabaseService);
   });
 
-  describe('create', () => {
-    it('should create a new user with hashed password', async () => {
+  describe('create (admin path — registration)', () => {
+    it('should delegate to the admin DatabaseService.createUser', async () => {
       const createUserDto = {
         email: 'test@example.com',
         password: 'password123',
         name: 'Test User',
         role: 'cashier',
-        tenantId: 'tenant-1',
       };
 
-      const mockUser = {
-        id: '123',
+      mockDatabaseService.createUser.mockResolvedValue({ ...mockUser, ...createUserDto });
+
+      const result = await service.create(createUserDto, 'tenant-1');
+
+      expect(mockDatabaseService.createUser).toHaveBeenCalledWith({
         email: createUserDto.email,
         password: createUserDto.password,
         name: createUserDto.name,
         role: createUserDto.role,
-        tenantId: createUserDto.tenantId,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-
-      (databaseService.createUser as jest.Mock).mockResolvedValue(mockUser);
-
-      const result = await service.create(createUserDto);
-
-      expect(databaseService.createUser).toHaveBeenCalledWith({
-        email: createUserDto.email,
-        password: createUserDto.password,
-        name: createUserDto.name,
-        role: createUserDto.role,
-        tenantId: createUserDto.tenantId,
+        tenantId: 'tenant-1',
       });
+      expect(mockDatabaseService.withTenant).not.toHaveBeenCalled();
 
       expect(result).toMatchObject({
         id: mockUser.id,
         email: createUserDto.email,
-        name: createUserDto.name,
-        role: createUserDto.role,
-        tenantId: createUserDto.tenantId,
+        tenantId: 'tenant-1',
       });
       expect(result).not.toHaveProperty('password');
     });
-
-    it('should generate unique IDs for different users', async () => {
-      const mockUser1 = {
-        id: '123',
-        email: 'user1@example.com',
-        password: 'password123',
-        name: 'User 1',
-        role: 'cashier',
-        tenantId: 'tenant-1',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-
-      const mockUser2 = {
-        id: '456',
-        email: 'user2@example.com',
-        password: 'password123',
-        name: 'User 2',
-        role: 'manager',
-        tenantId: 'tenant-1',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-
-      (databaseService.createUser as jest.Mock)
-        .mockResolvedValueOnce(mockUser1)
-        .mockResolvedValueOnce(mockUser2);
-
-      const user1 = await service.create({
-        email: 'user1@example.com',
-        password: 'password123',
-        name: 'User 1',
-        role: 'cashier',
-        tenantId: 'tenant-1',
-      });
-
-      const user2 = await service.create({
-        email: 'user2@example.com',
-        password: 'password123',
-        name: 'User 2',
-        role: 'manager',
-        tenantId: 'tenant-1',
-      });
-
-      expect(user1.id).not.toBe(user2.id);
-    });
   });
 
-  describe('findByEmail', () => {
-    it('should return user when found', async () => {
-      const mockUser = {
-        id: '123',
-        email: 'test@example.com',
-        password: 'hashedpassword',
-        name: 'Test User',
+  describe('createForTenant (tenant path — staff admin)', () => {
+    it('should create the user through withTenant with the tenant id', async () => {
+      const createUserDto = {
+        email: 'staff@example.com',
+        password: 'password123',
+        name: 'Staff User',
         role: 'cashier',
-        tenantId: 'tenant-1',
-        createdAt: new Date(),
-        updatedAt: new Date(),
       };
 
-      (databaseService.findUserByEmail as jest.Mock).mockResolvedValue(mockUser);
+      mockPrisma.user.create.mockResolvedValue({ ...mockUser, ...createUserDto });
 
-      const result = await service.findByEmail('test@example.com');
+      const result = await service.createForTenant(createUserDto as any, 'tenant-1');
 
-      expect(databaseService.findUserByEmail).toHaveBeenCalledWith('test@example.com');
-      expect(result).toEqual(mockUser);
-    });
-
-    it('should return undefined when user not found', async () => {
-      (databaseService.findUserByEmail as jest.Mock).mockResolvedValue(undefined);
-
-      const result = await service.findByEmail('nonexistent@example.com');
-
-      expect(databaseService.findUserByEmail).toHaveBeenCalledWith('nonexistent@example.com');
-      expect(result).toBeUndefined();
-    });
-  });
-
-  describe('findOne', () => {
-    it('should return user when found', async () => {
-      const mockUser = {
-        id: '123',
-        email: 'test@example.com',
-        password: 'hashedpassword',
-        name: 'Test User',
-        role: 'cashier',
-        tenantId: 'tenant-1',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-
-      (databaseService.findUserById as jest.Mock).mockResolvedValue(mockUser);
-
-      const result = await service.findOne('123');
-
-      expect(databaseService.findUserById).toHaveBeenCalledWith('123');
-      expect(result).toMatchObject({
-        id: mockUser.id,
-        email: mockUser.email,
-        name: mockUser.name,
-        role: mockUser.role,
-        tenantId: mockUser.tenantId,
-      });
-      expect(result).not.toHaveProperty('password');
-    });
-
-    it('should return null when user not found', async () => {
-      (databaseService.findUserById as jest.Mock).mockResolvedValue(null);
-
-      const result = await service.findOne('nonexistent-id');
-
-      expect(databaseService.findUserById).toHaveBeenCalledWith('nonexistent-id');
-      expect(result).toBeNull();
-    });
-  });
-
-  describe('findAll', () => {
-    it('should return all users without passwords', async () => {
-      const mockUsers = [
-        {
-          id: '1',
-          email: 'user1@example.com',
-          name: 'User 1',
+      expect(mockDatabaseService.withTenant).toHaveBeenCalledWith('tenant-1', expect.any(Function));
+      expect(mockPrisma.user.create).toHaveBeenCalledWith({
+        data: {
+          email: createUserDto.email,
+          password: createUserDto.password,
+          name: createUserDto.name,
+          phone: undefined,
           role: 'cashier',
           tenantId: 'tenant-1',
-          createdAt: new Date(),
-          updatedAt: new Date(),
+          externalId: undefined,
+          status: 'active',
+          locale: 'en',
         },
-        {
-          id: '2',
-          email: 'user2@example.com',
-          name: 'User 2',
-          role: 'manager',
-          tenantId: 'tenant-1',
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-      ];
+      });
+      expect(result).not.toHaveProperty('password');
+    });
+  });
 
-      (databaseService.findAllUsers as jest.Mock).mockResolvedValue(mockUsers);
+  describe('findAll (tenant path)', () => {
+    it('should list only tenant users, without passwords', async () => {
+      mockPrisma.user.findMany.mockResolvedValue([mockUser]);
 
-      const result = await service.findAll();
+      const result = await service.findAll('tenant-1');
 
-      expect(databaseService.findAllUsers).toHaveBeenCalled();
-      expect(result).toEqual(mockUsers);
-      expect(result.length).toBe(2);
-      
-      // Ensure no passwords are returned
-      result.forEach(user => {
+      expect(mockDatabaseService.withTenant).toHaveBeenCalledWith('tenant-1', expect.any(Function));
+      expect(mockPrisma.user.findMany).toHaveBeenCalledWith({ where: { tenantId: 'tenant-1' } });
+      expect(result.length).toBe(1);
+      result.forEach((user) => {
         expect(user).not.toHaveProperty('password');
       });
     });
   });
 
-  describe('update', () => {
-    it('should update user data', async () => {
-      const updateData = {
-        name: 'Updated Name',
-        role: 'manager',
-      };
+  describe('findOne (tenant path)', () => {
+    it('should return user found within the tenant scope', async () => {
+      mockPrisma.user.findFirst.mockResolvedValue(mockUser);
 
-      const mockUpdatedUser = {
-        id: '123',
-        email: 'test@example.com',
-        password: 'hashedpassword',
-        name: updateData.name,
-        role: updateData.role,
-        tenantId: 'tenant-1',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
+      const result = await service.findOne('123', 'tenant-1');
 
-      (databaseService.updateUser as jest.Mock).mockResolvedValue(mockUpdatedUser);
-
-      const result = await service.update('123', updateData);
-
-      expect(databaseService.updateUser).toHaveBeenCalledWith('123', updateData);
-      expect(result).toMatchObject({
-        id: mockUpdatedUser.id,
-        email: mockUpdatedUser.email,
-        name: updateData.name,
-        role: updateData.role,
-        tenantId: mockUpdatedUser.tenantId,
+      expect(mockDatabaseService.withTenant).toHaveBeenCalledWith('tenant-1', expect.any(Function));
+      expect(mockPrisma.user.findFirst).toHaveBeenCalledWith({
+        where: { id: '123', tenantId: 'tenant-1' },
       });
+      expect(result).toMatchObject({ id: mockUser.id, tenantId: 'tenant-1' });
       expect(result).not.toHaveProperty('password');
     });
 
-    it('should return null when user not found', async () => {
-      (databaseService.updateUser as jest.Mock).mockResolvedValue(null);
+    it('should throw NotFoundException when RLS hides the user (other tenant)', async () => {
+      mockPrisma.user.findFirst.mockResolvedValue(null);
 
-      const result = await service.update('nonexistent-id', { name: 'New Name' });
+      await expect(service.findOne('123', 'tenant-2')).rejects.toThrow(NotFoundException);
+    });
 
-      expect(databaseService.updateUser).toHaveBeenCalledWith('nonexistent-id', { name: 'New Name' });
-      expect(result).toBeNull();
+    it('should throw NotFoundException when user not found', async () => {
+      mockPrisma.user.findFirst.mockResolvedValue(null);
+
+      await expect(service.findOne('nonexistent-id', 'tenant-1')).rejects.toThrow(NotFoundException);
     });
   });
 
-  describe('remove', () => {
-    it('should remove user', async () => {
-      const mockDeletedUser = {
-        id: '123',
-        email: 'test@example.com',
-        password: 'hashedpassword',
-        name: 'Test User',
-        role: 'cashier',
-        tenantId: 'tenant-1',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
+  describe('update (tenant path)', () => {
+    it('should update user inside the tenant scope', async () => {
+      const updateData = { name: 'Updated Name', role: 'manager' };
+      mockPrisma.user.findFirst.mockResolvedValue(mockUser);
+      mockPrisma.user.update.mockResolvedValue({ ...mockUser, ...updateData });
 
-      (databaseService.deleteUser as jest.Mock).mockResolvedValue(mockDeletedUser);
+      const result = await service.update('123', updateData, 'tenant-1');
 
-      const result = await service.remove('123');
-
-      expect(databaseService.deleteUser).toHaveBeenCalledWith('123');
-      expect(result).toMatchObject({
-        id: mockDeletedUser.id,
-        email: mockDeletedUser.email,
-        name: mockDeletedUser.name,
-        role: mockDeletedUser.role,
-        tenantId: mockDeletedUser.tenantId,
+      expect(mockDatabaseService.withTenant).toHaveBeenCalledWith('tenant-1', expect.any(Function));
+      expect(mockPrisma.user.findFirst).toHaveBeenCalledWith({
+        where: { id: '123', tenantId: 'tenant-1' },
       });
+      expect(mockPrisma.user.update).toHaveBeenCalledWith({ where: { id: '123' }, data: updateData });
       expect(result).not.toHaveProperty('password');
     });
 
-    it('should return null when user not found', async () => {
-      (databaseService.deleteUser as jest.Mock).mockResolvedValue(null);
+    it('should throw and not update when user is in another tenant', async () => {
+      mockPrisma.user.findFirst.mockResolvedValue(null);
 
-      const result = await service.remove('nonexistent-id');
+      await expect(
+        service.update('123', { name: 'New Name' }, 'tenant-2'),
+      ).rejects.toThrow(NotFoundException);
+      expect(mockPrisma.user.update).not.toHaveBeenCalled();
+    });
+  });
 
-      expect(databaseService.deleteUser).toHaveBeenCalledWith('nonexistent-id');
-      expect(result).toBeNull();
+  describe('remove (tenant path)', () => {
+    it('should delete user inside the tenant scope', async () => {
+      mockPrisma.user.findFirst.mockResolvedValue(mockUser);
+      mockPrisma.user.delete.mockResolvedValue(mockUser);
+
+      const result = await service.remove('123', 'tenant-1');
+
+      expect(mockDatabaseService.withTenant).toHaveBeenCalledWith('tenant-1', expect.any(Function));
+      expect(mockPrisma.user.findFirst).toHaveBeenCalledWith({
+        where: { id: '123', tenantId: 'tenant-1' },
+      });
+      expect(mockPrisma.user.delete).toHaveBeenCalledWith({ where: { id: '123' } });
+      expect(result).not.toHaveProperty('password');
+    });
+
+    it('should throw and not delete when user is in another tenant', async () => {
+      mockPrisma.user.findFirst.mockResolvedValue(null);
+
+      await expect(service.remove('123', 'tenant-2')).rejects.toThrow(NotFoundException);
+      expect(mockPrisma.user.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('count (admin path)', () => {
+    it('should count across tenants via admin client for registration bootstrap', async () => {
+      mockDatabaseService.findAllUsers.mockResolvedValue([mockUser]);
+
+      const result = await service.count();
+
+      expect(mockDatabaseService.findAllUsers).toHaveBeenCalled();
+      expect(result).toBe(1);
     });
   });
 });

@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsBoolean, IsUUID, Min } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsBoolean, Min } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class CreateProductDto {
@@ -23,11 +23,11 @@ export class CreateProductDto {
   @Transform(({ value }) => Number(value))
   defaultCost?: number;
 
-  @IsUUID()
+  @IsString()
   @IsOptional()
   categoryId?: string;
 
-  @IsUUID()
+  @IsString()
   @IsOptional()
   taxId?: string;
 
@@ -35,10 +35,6 @@ export class CreateProductDto {
   @IsOptional()
   @Transform(({ value }) => value === 'true' || value === true)
   isWeighted?: boolean;
-
-  @IsString()
-  @IsOptional()
-  tenantId?: string;
 }
 
 export class UpdateProductDto {
@@ -66,11 +62,11 @@ export class UpdateProductDto {
   @Transform(({ value }) => Number(value))
   defaultCost?: number;
 
-  @IsUUID()
+  @IsString()
   @IsOptional()
   categoryId?: string;
 
-  @IsUUID()
+  @IsString()
   @IsOptional()
   taxId?: string;
 
@@ -100,7 +96,7 @@ export class ProductQueryDto {
   @IsOptional()
   search?: string;
 
-  @IsUUID()
+  @IsString()
   @IsOptional()
   categoryId?: string;
 
@@ -108,17 +104,9 @@ export class ProductQueryDto {
   @IsOptional()
   @Transform(({ value }) => value === 'true' || value === true)
   isActive?: boolean;
-
-  @IsString()
-  @IsOptional()
-  tenantId?: string;
 }
 
 export class BarcodeLookupDto {
   @IsString()
   barcode: string;
-
-  @IsString()
-  @IsOptional()
-  tenantId?: string;
 }

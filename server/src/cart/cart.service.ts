@@ -4,6 +4,7 @@ import { DatabaseService } from '../database/database.service';
 import { PricingService } from '../pricing/pricing.service';
 import { ProductService } from '../product/product.service';
 import { InventoryService } from '../inventory/inventory.service';
+import { RedisService } from '../redis/redis.service';
 import {
   Cart,
   CartLine,
@@ -16,17 +17,35 @@ const CART_TTL_SECONDS = 3600; // 1 hour
 
 @Injectable()
 export class CartService {
-  // In-memory cart storage (in production, use Redis)
-  private carts: Map<string, Cart> = new Map();
-
   constructor(
     private readonly databaseService: DatabaseService,
     private readonly pricingService: PricingService,
     private readonly productService: ProductService,
     private readonly inventoryService: InventoryService,
+    private readonly redis: RedisService,
   ) {}
 
-  async create(createCartDto: CreateCartDto): Promise<Cart> {
+  private cartKey(token: string): string {
+    return `cart:${token}`;
+  }
+
+  private async loadCart(token: string): Promise<Cart | null> {
+    const raw = await this.redis.getJson<Cart>(this.cartKey(token));
+    if (!raw) return null;
+    return {
+      ...raw,
+      createdAt: new Date(raw.createdAt),
+      updatedAt: new Date(raw.updatedAt),
+      expiresAt: new Date(raw.expiresAt),
+    };
+  }
+
+  private async saveCart(cart: Cart): Promise<void> {
+    const ttl = Math.max(1, Math.floor((cart.expiresAt.getTime() - Date.now()) / 1000));
+    await this.redis.setJson(this.cartKey(cart.token), cart, ttl);
+  }
+
+  async create(createCartDto: CreateCartDto, tenantId: string, cashierId: string): Promise<Cart> {
     const token = randomUUID();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + CART_TTL_SECONDS * 1000);
@@ -34,10 +53,10 @@ export class CartService {
     const cart: Cart = {
       id: randomUUID(),
       token,
-      tenantId: createCartDto.tenantId || 'tenant-1',
+      tenantId,
       shopId: createCartDto.shopId,
       customerId: createCartDto.customerId,
-      cashierId: createCartDto.cashierId,
+      cashierId,
       status: 'active',
       lines: [],
       subtotal: 0,
@@ -49,28 +68,28 @@ export class CartService {
       expiresAt,
     };
 
-    this.carts.set(token, cart);
+    await this.saveCart(cart);
     return cart;
   }
 
-  async findByToken(token: string): Promise<Cart> {
-    const cart = this.carts.get(token);
+  async findByToken(token: string, tenantId: string): Promise<Cart> {
+    const cart = await this.loadCart(token);
 
-    if (!cart) {
+    if (!cart || cart.tenantId !== tenantId) {
       throw new NotFoundException('Cart not found');
     }
 
     // Check expiration
     if (new Date() > cart.expiresAt) {
-      this.carts.delete(token);
+      await this.redis.del(this.cartKey(token));
       throw new NotFoundException('Cart expired');
     }
 
     return cart;
   }
 
-  async addLine(token: string, addLineDto: AddLineDto): Promise<Cart> {
-    const cart = await this.findByToken(token);
+  async addLine(token: string, addLineDto: AddLineDto, tenantId: string): Promise<Cart> {
+    const cart = await this.findByToken(token, tenantId);
 
     if (cart.status !== 'active') {
       throw new BadRequestException('Cannot modify tendered or completed cart');
@@ -81,7 +100,7 @@ export class CartService {
     if (addLineDto.barcode) {
       product = await this.productService.findByBarcode(addLineDto.barcode, cart.tenantId);
     } else {
-      product = await this.productService.findOne(addLineDto.productId);
+      product = await this.productService.findOne(addLineDto.productId, cart.tenantId);
     }
 
     if (!product) {
@@ -105,6 +124,7 @@ export class CartService {
     const stockCheck = await this.inventoryService.checkAvailability(
       cart.shopId,
       [{ productId: product.id, variantId: addLineDto.variantId, quantity: addLineDto.qty }],
+      cart.tenantId,
     );
 
     if (!stockCheck.available) {
@@ -129,6 +149,7 @@ export class CartService {
         existingLine.qty,
         existingLine.discount,
         addLineDto.taxId || product.taxId || undefined,
+        cart.tenantId,
       );
       existingLine.lineTotal = priceCalc.lineTotal;
       existingLine.taxAmount = priceCalc.taxAmount;
@@ -140,6 +161,7 @@ export class CartService {
         addLineDto.qty,
         addLineDto.discount || 0,
         taxId,
+        cart.tenantId,
       );
 
       const newLine: CartLine = {
@@ -165,7 +187,7 @@ export class CartService {
     await this.recalculateCart(cart);
 
     cart.updatedAt = new Date();
-    this.carts.set(token, cart);
+    await this.saveCart(cart);
 
     return cart;
   }
@@ -174,8 +196,9 @@ export class CartService {
     token: string,
     lineId: string,
     updateLineDto: UpdateLineDto,
+    tenantId: string,
   ): Promise<Cart> {
-    const cart = await this.findByToken(token);
+    const cart = await this.findByToken(token, tenantId);
 
     if (cart.status !== 'active') {
       throw new BadRequestException('Cannot modify tendered or completed cart');
@@ -215,6 +238,7 @@ export class CartService {
         line.qty,
         line.discount,
         line.taxId,
+        cart.tenantId,
       );
       line.lineTotal = priceCalc.lineTotal;
       line.taxAmount = priceCalc.taxAmount;
@@ -224,13 +248,13 @@ export class CartService {
     await this.recalculateCart(cart);
 
     cart.updatedAt = new Date();
-    this.carts.set(token, cart);
+    await this.saveCart(cart);
 
     return cart;
   }
 
-  async removeLine(token: string, lineId: string): Promise<Cart> {
-    const cart = await this.findByToken(token);
+  async removeLine(token: string, lineId: string, tenantId: string): Promise<Cart> {
+    const cart = await this.findByToken(token, tenantId);
 
     if (cart.status !== 'active') {
       throw new BadRequestException('Cannot modify tendered or completed cart');
@@ -247,23 +271,23 @@ export class CartService {
     await this.recalculateCart(cart);
 
     cart.updatedAt = new Date();
-    this.carts.set(token, cart);
+    await this.saveCart(cart);
 
     return cart;
   }
 
-  async recalculatePrice(token: string): Promise<Cart> {
-    const cart = await this.findByToken(token);
+  async recalculatePrice(token: string, tenantId: string): Promise<Cart> {
+    const cart = await this.findByToken(token, tenantId);
     await this.recalculateCart(cart);
 
     cart.updatedAt = new Date();
-    this.carts.set(token, cart);
+    await this.saveCart(cart);
 
     return cart;
   }
 
-  async tender(token: string): Promise<Cart> {
-    const cart = await this.findByToken(token);
+  async tender(token: string, tenantId: string): Promise<Cart> {
+    const cart = await this.findByToken(token, tenantId);
 
     if (cart.status !== 'active') {
       throw new BadRequestException('Cart already tendered');
@@ -275,13 +299,13 @@ export class CartService {
 
     cart.status = 'tendered';
     cart.updatedAt = new Date();
-    this.carts.set(token, cart);
+    await this.saveCart(cart);
 
     return cart;
   }
 
-  async cancel(token: string): Promise<Cart> {
-    const cart = await this.findByToken(token);
+  async cancel(token: string, tenantId: string): Promise<Cart> {
+    const cart = await this.findByToken(token, tenantId);
 
     if (cart.status === 'completed') {
       throw new BadRequestException('Cannot cancel completed cart');
@@ -289,13 +313,13 @@ export class CartService {
 
     cart.status = 'cancelled';
     cart.updatedAt = new Date();
-    this.carts.set(token, cart);
+    await this.saveCart(cart);
 
     return cart;
   }
 
-  async complete(token: string): Promise<Cart> {
-    const cart = await this.findByToken(token);
+  async complete(token: string, tenantId: string): Promise<Cart> {
+    const cart = await this.findByToken(token, tenantId);
 
     if (cart.status !== 'tendered') {
       throw new BadRequestException('Cart must be tendered before completion');
@@ -303,18 +327,18 @@ export class CartService {
 
     cart.status = 'completed';
     cart.updatedAt = new Date();
-    this.carts.set(token, cart);
+    await this.saveCart(cart);
 
     return cart;
   }
 
-  async delete(token: string): Promise<{ success: boolean }> {
-    const cart = this.carts.get(token);
-    if (!cart) {
+  async delete(token: string, tenantId: string): Promise<{ success: boolean }> {
+    const cart = await this.loadCart(token);
+    if (!cart || cart.tenantId !== tenantId) {
       throw new NotFoundException('Cart not found');
     }
 
-    this.carts.delete(token);
+    await this.redis.del(this.cartKey(token));
     return { success: true };
   }
 
@@ -338,15 +362,5 @@ export class CartService {
     cart.discount = priceCalc.discount;
     cart.tax = priceCalc.tax;
     cart.total = priceCalc.total;
-  }
-
-  // For testing
-  getCarts(): Map<string, Cart> {
-    return this.carts;
-  }
-
-  // For clearing test data
-  clearCarts(): void {
-    this.carts.clear();
   }
 }

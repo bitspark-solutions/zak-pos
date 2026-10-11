@@ -21,6 +21,10 @@ export class RegisterDto {
 
   @IsOptional()
   @IsString()
+  storeName?: string;
+
+  @IsOptional()
+  @IsString()
   role?: string;
 }
 

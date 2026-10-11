@@ -53,10 +53,6 @@ export class SendInvoiceDto {
 export class InvoiceQueryDto {
   @IsString()
   @IsOptional()
-  tenantId?: string;
-
-  @IsString()
-  @IsOptional()
   shopId?: string;
 
   @IsString()
