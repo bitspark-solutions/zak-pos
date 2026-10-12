@@ -17,6 +17,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 import structlog
+from sqlalchemy import text
 
 from app.core.config import settings
 from app.core.database import init_db, close_db, AsyncSessionLocal
@@ -104,7 +105,7 @@ async def health_check():
     try:
         # Check database connectivity
         async with AsyncSessionLocal() as session:
-            await session.execute("SELECT 1")
+            await session.execute(text("SELECT 1"))
 
         # Check Redis connectivity
         from app.core.redis import get_redis

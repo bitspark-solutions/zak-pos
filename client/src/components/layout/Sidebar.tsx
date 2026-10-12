@@ -48,6 +48,13 @@ const menuItems: MenuItem[] = [
     permissions: ['product:read'],
   },
   {
+    label: 'Import',
+    href: ROUTES.IMPORT,
+    icon: '📥',
+    roles: ['owner', 'manager'],
+    permissions: ['product:create'],
+  },
+  {
     label: 'Inventory',
     href: '/inventory',
     icon: '📋',

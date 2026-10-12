@@ -8,7 +8,7 @@ Includes models for jobs, metrics, and error logging.
 
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import String, Integer, Float, Boolean, Text, DateTime, JSON, UUID, ForeignKey
+from sqlalchemy import String, Integer, Float, Boolean, Text, DateTime, JSON, UUID, ForeignKey, text
 from sqlalchemy.sql import func
 import structlog
 
@@ -175,8 +175,8 @@ async def check_database_health() -> dict:
     """Check database connectivity and health."""
     try:
         async with AsyncSessionLocal() as session:
-            result = await session.execute("SELECT 1 as health_check")
-            await result.fetchone()
+            result = await session.execute(text("SELECT 1 as health_check"))
+            result.fetchone()
 
         return {
             "status": "healthy",

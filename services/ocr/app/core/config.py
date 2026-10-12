@@ -65,6 +65,9 @@ class Settings(BaseSettings):
     JWT_SECRET: str = "your-secret-key-change-in-production"
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRES_MINUTES: int = 60
+    # Shared secret for service-to-service calls (X-API-Key header).
+    # When unset, requests are accepted with a logged warning (dev mode).
+    OCR_API_KEY: Optional[str] = None
 
     # Monitoring
     SENTRY_DSN: Optional[str] = None

@@ -30,6 +30,9 @@ boto3==1.36.26
 scikit-image==0.25.2
 python-multipart==0.0.20
 
+# PDF text extraction (catalog onboarding /extract-products)
+pypdf==5.1.0
+
 # Development and testing
 pytest==8.3.4
 pytest-asyncio==0.25.3

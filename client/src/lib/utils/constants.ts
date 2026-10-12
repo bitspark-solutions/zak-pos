@@ -8,6 +8,7 @@ export const ROUTES = {
   ADMIN_DASHBOARD: '/dashboard',
   ADMIN: '/admin',
   POS: '/pos',
+  IMPORT: '/import',
   PROFILE: '/profile',
   UNAUTHORIZED: '/unauthorized',
 } as const;

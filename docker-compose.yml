@@ -313,6 +313,7 @@ services:
       OCR_MODEL_PRIMARY: ${OCR_MODEL_PRIMARY:-microsoft/trocr-small-printed}
       OCR_MODEL_FALLBACK: ${OCR_MODEL_FALLBACK:-tesseract}
       OCR_ENABLE_GPU: ${OCR_ENABLE_GPU:-false}
+      OCR_API_KEY: ${OCR_API_KEY:-}
       JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:41923,http://localhost:96140}
       LOG_LEVEL: ${LOG_LEVEL:-info}

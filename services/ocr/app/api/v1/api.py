@@ -10,8 +10,8 @@ import time
 import uuid
 import tempfile
 import os
-from typing import Dict, Any, List
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks
+from typing import Dict, Any, List, Optional
+from fastapi import APIRouter, Depends, Header, HTTPException, UploadFile, File, Form, BackgroundTasks
 from fastapi import status as http_status
 from fastapi.responses import JSONResponse
 import structlog
@@ -20,10 +20,11 @@ from app.core.config import settings
 from app.core.redis import check_rate_limit, increment_rate_limit, get_queue_length
 from app.core.monitoring import get_system_health
 from app.services.ocr_service import OCRService
+from app.services.product_parser import extract_pdf_text, parse_product_text
 from app.models.schemas import (
     OCRRequest, OCRResult, BatchOCRRequest, BatchOCRResponse,
-    AsyncOCRRequest, AsyncOCRStatus, HealthStatus, MetricsResponse,
-    UploadResponse, OCRError, WebSocketMessage, OCRType
+    AsyncOCRRequest, AsyncOCRStatus, ExtractProductsResponse, HealthStatus,
+    MetricsResponse, UploadResponse, OCRError, WebSocketMessage, OCRType
 )
 
 # Configure logging
@@ -32,11 +33,36 @@ logger = structlog.get_logger(__name__)
 # Create API router
 api_router = APIRouter()
 
+# Accepted content types for product extraction uploads
+EXTRACT_IMAGE_CONTENT_TYPES = {
+    "image/png", "image/jpeg", "image/jpg", "image/webp", "image/tiff"
+}
+EXTRACT_PDF_CONTENT_TYPE = "application/pdf"
+
+# One-shot flag so the permissive-dev warning is logged only once
+_dev_mode_warned = False
+
 
 # Dependency functions
-async def get_current_user() -> Dict[str, str]:
+async def get_current_user(x_api_key: Optional[str] = Header(None)) -> Dict[str, str]:
     """Get current user from JWT token (placeholder for now)."""
+    global _dev_mode_warned
+
     # TODO: Implement proper JWT authentication
+    if settings.OCR_API_KEY:
+        # Shared secret mode: the NestJS server passes X-API-Key.
+        if x_api_key != settings.OCR_API_KEY:
+            raise HTTPException(
+                status_code=http_status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or missing X-API-Key header"
+            )
+    elif not _dev_mode_warned:
+        _dev_mode_warned = True
+        logger.warning(
+            "OCR_API_KEY not configured - accepting requests without API key "
+            "(permissive development mode)"
+        )
+
     return {"user_id": "temp_user", "shop_id": "temp_shop"}
 
 
@@ -435,6 +461,125 @@ async def get_uploaded_file(filename: str, current_user: Dict = Depends(get_curr
         status_code=http_status.HTTP_501_NOT_IMPLEMENTED,
         detail="File serving not implemented yet"
     )
+
+
+# Product extraction endpoint (catalog onboarding)
+@api_router.post("/extract-products", response_model=ExtractProductsResponse, tags=["OCR"])
+async def extract_products(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(..., description="Product catalog image (png/jpg/jpeg/webp/tiff) or PDF"),
+    language: str = Form("en", description="Processing language"),
+    current_user: Dict = Depends(get_current_user)
+):
+    """Extract structured product candidates from a catalog image or PDF.
+
+    Pipeline: bytes -> text (OCRService for images, pypdf embedded-text
+    extraction for PDFs) -> product candidates via the heuristic parser.
+    Scanned PDFs (no embedded text layer) are rejected with a clear error;
+    page rendering is intentionally out of scope.
+    """
+
+    content_type = (file.content_type or "").lower()
+    is_pdf = content_type == EXTRACT_PDF_CONTENT_TYPE
+    is_image = content_type in EXTRACT_IMAGE_CONTENT_TYPES
+
+    if not (is_pdf or is_image):
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Invalid file type. Please upload an image "
+                "(png/jpg/jpeg/webp/tiff) or a PDF."
+            )
+        )
+
+    if file.size and file.size > settings.MAX_IMAGE_SIZE_MB * 1024 * 1024:
+        raise HTTPException(
+            status_code=http_status.HTTP_413_PAYLOAD_TOO_LARGE,
+            detail=f"File too large. Maximum size is {settings.MAX_IMAGE_SIZE_MB}MB"
+        )
+
+    await check_rate_limits(current_user["user_id"], current_user["shop_id"])
+
+    try:
+        data = await file.read()
+
+        if is_pdf:
+            # PDFs: embedded text extraction only (no page rendering).
+            engine = "pypdf"
+            try:
+                raw_text = extract_pdf_text(data)
+            except Exception as e:
+                raise OCRError("INVALID_PDF", f"Failed to read PDF: {str(e)}")
+
+            if not raw_text.strip():
+                raise HTTPException(
+                    status_code=http_status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        "PDF contains no embedded text. Scanned PDFs are not "
+                        "supported by this endpoint - convert the pages to "
+                        "images (png/jpg) and re-upload to use image OCR mode."
+                    )
+                )
+        else:
+            # Images: reuse the existing OCR pipeline.
+            temp_dir = tempfile.gettempdir()
+            temp_filename = f"extract_{uuid.uuid4()}_{file.filename or 'image'}"
+            temp_path = os.path.join(temp_dir, temp_filename)
+
+            with open(temp_path, "wb") as buffer:
+                buffer.write(data)
+
+            request = OCRRequest(
+                shop_id=current_user["shop_id"],
+                user_id=current_user["user_id"],
+                ocr_type=OCRType.PRODUCT,
+                confidence_threshold=settings.OCR_CONFIDENCE_THRESHOLD,
+                extract_barcodes=False,  # barcodes are parsed from text by the product parser
+                language=language,
+                image_path=temp_path,
+                file_size=len(data),
+                filename=file.filename or "catalog_image"
+            )
+
+            ocr_service = OCRService.get_instance()
+            result = await ocr_service.process_image(request)
+            raw_text = result.text
+            engine = result.model_used
+
+            background_tasks.add_task(os.remove, temp_path)
+
+        products = parse_product_text(raw_text)
+
+        logger.info(
+            "Product extraction completed",
+            user_id=current_user["user_id"],
+            shop_id=current_user["shop_id"],
+            engine=engine,
+            product_count=len(products),
+            filename=file.filename
+        )
+
+        return ExtractProductsResponse(
+            products=products,
+            raw_text=raw_text,
+            engine=engine,
+            count=len(products)
+        )
+
+    except OCRError as e:
+        logger.error("Product extraction failed", error_code=e.code, error_message=e.message)
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST if e.code in ["FILE_TOO_LARGE", "INVALID_IMAGE", "INVALID_PDF"] else http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"[{e.code}] {e.message}"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Product extraction failed", error=str(e), user_id=current_user["user_id"])
+        raise HTTPException(
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Product extraction failed: {str(e)}"
+        )
 
 
 # Background task functions

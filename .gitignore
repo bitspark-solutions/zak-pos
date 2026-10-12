@@ -64,6 +64,8 @@ model_cache/
 *.weights
 *.ckpt
 *.checkpoint
+# OCR service Pydantic schema package is code, not model artifacts
+!services/ocr/app/models/
 
 # Runtime data
 pids
