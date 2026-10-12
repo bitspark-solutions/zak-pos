@@ -19,6 +19,7 @@ import { TenantSettingsModule } from './tenant-settings/tenant-settings.module';
 import { ProductImportModule } from './product-import/product-import.module';
 import { ReceiptsModule } from './receipts/receipts.module';
 import { ReportsModule } from './reports/reports.module';
+import { ForecastingModule } from './forecasting/forecasting.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { ReportsModule } from './reports/reports.module';
     ProductImportModule,
     ReceiptsModule,
     ReportsModule,
+    ForecastingModule,
   ],
   controllers: [AppController, HealthController],
   providers: [AppService],

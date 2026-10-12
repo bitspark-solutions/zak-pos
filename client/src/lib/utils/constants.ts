@@ -11,6 +11,7 @@ export const ROUTES = {
   IMPORT: '/import',
   RECEIPTS: '/receipts',
   REPORTS: '/reports',
+  FORECAST: '/forecast',
   PROFILE: '/profile',
   UNAUTHORIZED: '/unauthorized',
 } as const;

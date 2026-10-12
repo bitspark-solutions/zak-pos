@@ -1,0 +1,360 @@
+/* Same styling family as the (dashboard)/reports page: shared palette
+   (#006a4e primary, gray neutrals), card/table/banner patterns; extended
+   with risk-badge, filter-chip, summary-strip and expandable detail styles
+   for the stock forecasting flow. */
+
+.container {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.title {
+  font-size: 2rem;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 1.5rem;
+}
+
+.subtitle {
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin: -1rem 0 1.5rem;
+}
+
+.card {
+  background: white;
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+/* Buttons */
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1.25rem;
+  border-radius: 0.375rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  font-family: inherit;
+  transition: background-color 0.2s;
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.primary {
+  background-color: #006a4e;
+  color: white;
+}
+
+.primary:hover:not(:disabled) {
+  background-color: #005740;
+}
+
+/* Controls */
+.controlsRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-end;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  min-width: 150px;
+}
+
+.fieldLabel {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #374151;
+}
+
+.field input[type='text'],
+.field select {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  font-family: inherit;
+  color: #111827;
+  background: white;
+}
+
+.field input:focus,
+.field select:focus {
+  outline: none;
+  border-color: #006a4e;
+  box-shadow: 0 0 0 3px rgba(0, 106, 78, 0.1);
+}
+
+.fieldHint {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin: 0.75rem 0 0;
+}
+
+/* Risk filter chips */
+.chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}
+
+.chip {
+  padding: 0.4rem 0.9rem;
+  border-radius: 9999px;
+  border: 1px solid #d1d5db;
+  background: white;
+  color: #374151;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.2s, background-color 0.2s, color 0.2s;
+}
+
+.chip:hover {
+  border-color: #006a4e;
+}
+
+.chipActive,
+.chipActive:hover {
+  background-color: #006a4e;
+  border-color: #006a4e;
+  color: white;
+}
+
+/* Summary strip */
+.summaryStrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.summaryItem {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  padding: 0.75rem 1.25rem;
+  background: white;
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  min-width: 120px;
+}
+
+.summaryValue {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #111827;
+  font-variant-numeric: tabular-nums;
+}
+
+.summaryLabel {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.summaryDanger .summaryValue {
+  color: #dc2626;
+}
+
+.summaryWarn .summaryValue {
+  color: #d97706;
+}
+
+.generatedAt {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-left: auto;
+}
+
+/* Banners */
+.errorBanner {
+  padding: 1rem;
+  background-color: #fee2e2;
+  border: 1px solid #ef4444;
+  border-radius: 0.375rem;
+  color: #991b1b;
+  margin-bottom: 1.5rem;
+  font-size: 0.875rem;
+}
+
+/* Table */
+.tableWrapper {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.table th {
+  text-align: left;
+  padding: 0.75rem;
+  color: #6b7280;
+  font-weight: 500;
+  border-bottom: 1px solid #e5e7eb;
+  white-space: nowrap;
+}
+
+.table td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #f3f4f6;
+  color: #374151;
+  vertical-align: middle;
+}
+
+.cellNumber {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.clickableRow {
+  cursor: pointer;
+}
+
+.clickableRow:hover td {
+  background-color: #f9fafb;
+}
+
+.rowSku {
+  display: block;
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+/* Risk badges */
+.badge {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.badgeOutOfStock {
+  background-color: #fee2e2;
+  color: #991b1b;
+}
+
+.badgeLow {
+  background-color: #fef3c7;
+  color: #92400e;
+}
+
+.badgeOk {
+  background-color: #d1fae5;
+  color: #065f46;
+}
+
+.badgeOverstock {
+  background-color: #dbeafe;
+  color: #1e40af;
+}
+
+/* Expanded detail row */
+.detailRow td {
+  background-color: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 1.25rem;
+}
+
+.detailPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.detailSummary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
+}
+
+.detailField {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.875rem;
+  color: #111827;
+}
+
+.detailLabel {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.chartsRow {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+}
+
+@media (min-width: 900px) {
+  .chartsRow {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.chartBlock {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+
+.chartTitle {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: #111827;
+  margin: 0 0 0.75rem;
+}
+
+.empty {
+  color: #6b7280;
+  font-style: italic;
+  padding: 1.5rem 0;
+  text-align: center;
+}
+
+.center {
+  padding: 2rem;
+  color: #6b7280;
+}
+
+@media (max-width: 768px) {
+  .container {
+    padding: 0;
+  }
+
+  .card {
+    padding: 1rem;
+  }
+
+  .controlsRow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .generatedAt {
+    margin-left: 0;
+  }
+}

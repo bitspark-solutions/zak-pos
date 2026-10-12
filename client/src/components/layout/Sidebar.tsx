@@ -69,6 +69,13 @@ const menuItems: MenuItem[] = [
     permissions: ['report:read'],
   },
   {
+    label: 'Forecast',
+    href: ROUTES.FORECAST,
+    icon: '🔮',
+    roles: ['owner', 'manager'],
+    permissions: ['report:read'],
+  },
+  {
     label: 'Inventory',
     href: '/inventory',
     icon: '📋',
