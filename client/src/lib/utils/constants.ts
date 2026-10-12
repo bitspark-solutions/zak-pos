@@ -9,6 +9,7 @@ export const ROUTES = {
   ADMIN: '/admin',
   POS: '/pos',
   IMPORT: '/import',
+  RECEIPTS: '/receipts',
   PROFILE: '/profile',
   UNAUTHORIZED: '/unauthorized',
 } as const;

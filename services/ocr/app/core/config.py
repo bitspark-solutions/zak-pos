@@ -8,7 +8,7 @@ All configuration is loaded from environment variables with sensible defaults.
 
 import os
 from typing import List, Optional
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -79,11 +79,7 @@ class Settings(BaseSettings):
     ENABLE_MODEL_CACHING: bool = True
     ENABLE_METRICS_COLLECTION: bool = True
 
-    class Config:
-        """Pydantic configuration."""
-        env_file = ".env"
-        case_sensitive = False
-        extra = "ignore"
+    model_config = SettingsConfigDict(env_file=".env", case_sensitive=False, extra="ignore")
 
 
 # Create global settings instance

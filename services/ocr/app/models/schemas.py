@@ -7,7 +7,7 @@ Defines the contract between clients and the OCR server.
 """
 
 from typing import Dict, List, Optional, Any, Union
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from enum import Enum
 import time
 import uuid
@@ -48,12 +48,6 @@ class OCRRequest(BaseModel):
     image_path: str = Field(..., description="Path to image file")
     file_size: int = Field(..., description="File size in bytes")
     filename: str = Field(..., description="Original filename")
-
-    class Config:
-        """Pydantic configuration."""
-        json_encoders = {
-            str: lambda v: v if v else ""
-        }
 
 
 class OCRResult(BaseModel):
@@ -144,7 +138,8 @@ class BarcodeInfo(BaseModel):
     confidence: float = Field(..., ge=0.0, le=1.0, description="Detection confidence")
     bounding_box: Dict[str, int] = Field(..., description="Bounding box coordinates")
 
-    @validator('type')
+    @field_validator('type')
+    @classmethod
     def validate_barcode_type(cls, v):
         """Validate barcode type."""
         valid_types = ['QR_CODE', 'EAN_13', 'UPC_A', 'CODE_128', 'DATA_MATRIX', 'PDF417']
@@ -156,10 +151,11 @@ class BarcodeInfo(BaseModel):
 class BatchOCRRequest(BaseModel):
     """Batch OCR processing request."""
 
-    images: List[OCRRequest] = Field(..., min_items=1, max_items=10, description="Images to process")
+    images: List[OCRRequest] = Field(..., min_length=1, max_length=10, description="Images to process")
     priority: str = Field(default="normal", description="Processing priority")
 
-    @validator('images')
+    @field_validator('images')
+    @classmethod
     def validate_image_count(cls, v):
         """Validate number of images."""
         if len(v) > 10:
@@ -267,6 +263,34 @@ class ExtractProductsResponse(BaseModel):
     raw_text: str = Field(..., description="Raw text produced by OCR/PDF extraction")
     engine: str = Field(..., description="Text extraction engine used (model name or 'pypdf')")
     count: int = Field(..., description="Number of product candidates extracted")
+
+
+class ReceiptItem(BaseModel):
+    """Line item digitized from a receipt/invoice.
+
+    Contract consumed by the NestJS server during receipt digitization:
+    name/qty/unit_price/line_total must not change shape.
+    """
+
+    name: str = Field(..., description="Item description (line minus trailing numbers)")
+    qty: Optional[float] = Field(None, description="Positive quantity if identified, else null")
+    unit_price: Optional[float] = Field(None, description="Unit/rate price if identified, else null")
+    line_total: Optional[float] = Field(None, description="Line total amount if identified, else null")
+
+
+class ExtractReceiptResponse(BaseModel):
+    """Structured receipt/invoice digitization response."""
+
+    vendor: Optional[str] = Field(None, description="Business name (keyword-preferred top line)")
+    document_date: Optional[str] = Field(None, description="Document date as ISO YYYY-MM-DD if found")
+    currency: Optional[str] = Field(None, description="Detected currency code (BDT/USD/EUR), null if no money")
+    subtotal: Optional[float] = Field(None, description="Subtotal amount if labelled, else null")
+    discount: Optional[float] = Field(None, description="Discount amount if labelled, else null")
+    tax: Optional[float] = Field(None, description="Tax/VAT/GST amount if labelled, else null")
+    total: Optional[float] = Field(None, description="Last (grand) total amount if labelled, else null")
+    items: List[ReceiptItem] = Field(..., description="Digitized line items")
+    raw_text: str = Field(..., description="Raw text produced by OCR/PDF extraction")
+    engine: str = Field(..., description="Text extraction engine used (model name or 'pypdf')")
 
 
 class WebSocketMessage(BaseModel):

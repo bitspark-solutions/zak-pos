@@ -17,6 +17,7 @@ import { InvitationsModule } from './invitations/invitations.module';
 import { ShopsModule } from './shops/shops.module';
 import { TenantSettingsModule } from './tenant-settings/tenant-settings.module';
 import { ProductImportModule } from './product-import/product-import.module';
+import { ReceiptsModule } from './receipts/receipts.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { ProductImportModule } from './product-import/product-import.module';
     ShopsModule,
     TenantSettingsModule,
     ProductImportModule,
+    ReceiptsModule,
   ],
   controllers: [AppController, HealthController],
   providers: [AppService],

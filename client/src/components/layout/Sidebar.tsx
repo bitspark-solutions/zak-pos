@@ -55,6 +55,13 @@ const menuItems: MenuItem[] = [
     permissions: ['product:create'],
   },
   {
+    label: 'Receipts',
+    href: ROUTES.RECEIPTS,
+    icon: '🧾',
+    roles: ['owner', 'manager'],
+    permissions: ['product:create'],
+  },
+  {
     label: 'Inventory',
     href: '/inventory',
     icon: '📋',

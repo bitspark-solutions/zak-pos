@@ -21,9 +21,11 @@ from app.core.redis import check_rate_limit, increment_rate_limit, get_queue_len
 from app.core.monitoring import get_system_health
 from app.services.ocr_service import OCRService
 from app.services.product_parser import extract_pdf_text, parse_product_text
+from app.services.receipt_parser import parse_receipt_text
 from app.models.schemas import (
     OCRRequest, OCRResult, BatchOCRRequest, BatchOCRResponse,
-    AsyncOCRRequest, AsyncOCRStatus, ExtractProductsResponse, HealthStatus,
+    AsyncOCRRequest, AsyncOCRStatus, ExtractProductsResponse, ExtractReceiptResponse,
+    HealthStatus,
     MetricsResponse, UploadResponse, OCRError, WebSocketMessage, OCRType
 )
 
@@ -579,6 +581,131 @@ async def extract_products(
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Product extraction failed: {str(e)}"
+        )
+
+
+# Receipt / invoice digitization endpoint
+@api_router.post("/extract-receipt", response_model=ExtractReceiptResponse, tags=["OCR"])
+async def extract_receipt(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(..., description="Receipt/invoice image (png/jpg/jpeg/webp/tiff) or PDF"),
+    language: str = Form("en", description="Processing language"),
+    current_user: Dict = Depends(get_current_user)
+):
+    """Digitize a receipt/invoice image or PDF into structured fields.
+
+    Pipeline: bytes -> text (OCRService for images, pypdf embedded-text
+    extraction for PDFs) -> structured receipt via the heuristic parser.
+    Scanned PDFs (no embedded text layer) are rejected with a clear error;
+    page rendering is intentionally out of scope.
+    """
+
+    content_type = (file.content_type or "").lower()
+    is_pdf = content_type == EXTRACT_PDF_CONTENT_TYPE
+    is_image = content_type in EXTRACT_IMAGE_CONTENT_TYPES
+
+    if not (is_pdf or is_image):
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Invalid file type. Please upload an image "
+                "(png/jpg/jpeg/webp/tiff) or a PDF."
+            )
+        )
+
+    if file.size and file.size > settings.MAX_IMAGE_SIZE_MB * 1024 * 1024:
+        raise HTTPException(
+            status_code=http_status.HTTP_413_PAYLOAD_TOO_LARGE,
+            detail=f"File too large. Maximum size is {settings.MAX_IMAGE_SIZE_MB}MB"
+        )
+
+    await check_rate_limits(current_user["user_id"], current_user["shop_id"])
+
+    try:
+        data = await file.read()
+
+        if is_pdf:
+            # PDFs: embedded text extraction only (no page rendering).
+            engine = "pypdf"
+            try:
+                raw_text = extract_pdf_text(data)
+            except Exception as e:
+                raise OCRError("INVALID_PDF", f"Failed to read PDF: {str(e)}")
+
+            if not raw_text.strip():
+                raise HTTPException(
+                    status_code=http_status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        "PDF contains no embedded text. Scanned PDFs are not "
+                        "supported by this endpoint - convert the pages to "
+                        "images (png/jpg) and re-upload to use image OCR mode."
+                    )
+                )
+        else:
+            # Images: reuse the existing OCR pipeline.
+            temp_dir = tempfile.gettempdir()
+            temp_filename = f"receipt_{uuid.uuid4()}_{file.filename or 'image'}"
+            temp_path = os.path.join(temp_dir, temp_filename)
+
+            with open(temp_path, "wb") as buffer:
+                buffer.write(data)
+
+            request = OCRRequest(
+                shop_id=current_user["shop_id"],
+                user_id=current_user["user_id"],
+                ocr_type=OCRType.RECEIPT,
+                confidence_threshold=settings.OCR_CONFIDENCE_THRESHOLD,
+                extract_barcodes=False,  # structure is parsed from text by the receipt parser
+                language=language,
+                image_path=temp_path,
+                file_size=len(data),
+                filename=file.filename or "receipt_image"
+            )
+
+            ocr_service = OCRService.get_instance()
+            result = await ocr_service.process_image(request)
+            raw_text = result.text
+            engine = result.model_used
+
+            background_tasks.add_task(os.remove, temp_path)
+
+        receipt = parse_receipt_text(raw_text)
+
+        logger.info(
+            "Receipt extraction completed",
+            user_id=current_user["user_id"],
+            shop_id=current_user["shop_id"],
+            engine=engine,
+            item_count=len(receipt["items"]),
+            filename=file.filename
+        )
+
+        return ExtractReceiptResponse(
+            vendor=receipt["vendor"],
+            document_date=receipt["document_date"],
+            currency=receipt["currency"],
+            subtotal=receipt["subtotal"],
+            discount=receipt["discount"],
+            tax=receipt["tax"],
+            total=receipt["total"],
+            items=receipt["items"],
+            raw_text=raw_text,
+            engine=engine
+        )
+
+    except OCRError as e:
+        logger.error("Receipt extraction failed", error_code=e.code, error_message=e.message)
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST if e.code in ["FILE_TOO_LARGE", "INVALID_IMAGE", "INVALID_PDF"] else http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"[{e.code}] {e.message}"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Receipt extraction failed", error=str(e), user_id=current_user["user_id"])
+        raise HTTPException(
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Receipt extraction failed: {str(e)}"
         )
 
 
