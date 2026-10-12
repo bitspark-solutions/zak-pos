@@ -18,6 +18,7 @@ import { ShopsModule } from './shops/shops.module';
 import { TenantSettingsModule } from './tenant-settings/tenant-settings.module';
 import { ProductImportModule } from './product-import/product-import.module';
 import { ReceiptsModule } from './receipts/receipts.module';
+import { ReportsModule } from './reports/reports.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { ReceiptsModule } from './receipts/receipts.module';
     TenantSettingsModule,
     ProductImportModule,
     ReceiptsModule,
+    ReportsModule,
   ],
   controllers: [AppController, HealthController],
   providers: [AppService],

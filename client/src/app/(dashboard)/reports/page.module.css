@@ -1,0 +1,313 @@
+/* Same styling family as the (dashboard)/receipts page: shared palette
+   (#006a4e primary, gray neutrals), card/table/banner patterns; extended
+   with ask-row, preset report-card and chart styles for the reports flow. */
+
+.container {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.title {
+  font-size: 2rem;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 1.5rem;
+}
+
+.subtitle {
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin: -1rem 0 1.5rem;
+}
+
+.card {
+  background: white;
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.cardTitle {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #111827;
+  margin: 0 0 1rem;
+}
+
+/* Ask box */
+.askRow {
+  display: flex;
+  gap: 0.75rem;
+  align-items: stretch;
+}
+
+.askInput {
+  flex: 1;
+  min-width: 0;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.375rem;
+  font-size: 0.9375rem;
+  font-family: inherit;
+  color: #111827;
+  background: white;
+}
+
+.askInput:focus {
+  outline: none;
+  border-color: #006a4e;
+  box-shadow: 0 0 0 3px rgba(0, 106, 78, 0.1);
+}
+
+/* Buttons */
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1.25rem;
+  border-radius: 0.375rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  font-family: inherit;
+  transition: background-color 0.2s;
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.primary {
+  background-color: #006a4e;
+  color: white;
+}
+
+.primary:hover:not(:disabled) {
+  background-color: #005740;
+}
+
+/* Preset report cards */
+.reportCards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.reportCard {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  text-align: left;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  padding: 0.875rem 1rem;
+  cursor: pointer;
+  font-family: inherit;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  transition: border-color 0.2s, background-color 0.2s;
+}
+
+.reportCard:hover:not(:disabled) {
+  border-color: #006a4e;
+  background-color: #f0faf6;
+}
+
+.reportCard:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.reportCardActive,
+.reportCardActive:hover:not(:disabled) {
+  border-color: #006a4e;
+  background-color: #006a4e;
+}
+
+.reportCardLabel {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.reportCardDescription {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.reportCardActive .reportCardLabel {
+  color: white;
+}
+
+.reportCardActive .reportCardDescription {
+  color: #d1fae5;
+}
+
+/* Filters */
+.controlsRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-end;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  min-width: 150px;
+}
+
+.fieldLabel {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #374151;
+}
+
+.field input[type='date'],
+.field input[type='number'],
+.field select {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  font-family: inherit;
+  color: #111827;
+  background: white;
+}
+
+.field input:focus,
+.field select:focus {
+  outline: none;
+  border-color: #006a4e;
+  box-shadow: 0 0 0 3px rgba(0, 106, 78, 0.1);
+}
+
+.fieldHint {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin: 0.75rem 0 0;
+}
+
+/* Banners */
+.errorBanner {
+  padding: 1rem;
+  background-color: #fee2e2;
+  border: 1px solid #ef4444;
+  border-radius: 0.375rem;
+  color: #991b1b;
+  margin-bottom: 1.5rem;
+  font-size: 0.875rem;
+}
+
+.interpretationBanner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  background-color: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 0.375rem;
+  color: #1e40af;
+  font-size: 0.9375rem;
+  margin-bottom: 1.5rem;
+}
+
+.engineBadge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  background-color: #fef3c7;
+  color: #92400e;
+  text-transform: lowercase;
+  white-space: nowrap;
+}
+
+/* Results */
+.result {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.chart {
+  width: 100%;
+}
+
+.tableWrapper {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.table th {
+  text-align: left;
+  padding: 0.75rem;
+  color: #6b7280;
+  font-weight: 500;
+  border-bottom: 1px solid #e5e7eb;
+  white-space: nowrap;
+}
+
+.table td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #f3f4f6;
+  color: #374151;
+  vertical-align: top;
+}
+
+.cellNumber {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.totalsRow td {
+  font-weight: 600;
+  color: #111827;
+  border-top: 2px solid #e5e7eb;
+  border-bottom: none;
+}
+
+.empty {
+  color: #6b7280;
+  font-style: italic;
+  padding: 1.5rem 0;
+  text-align: center;
+}
+
+.center {
+  padding: 2rem;
+  color: #6b7280;
+}
+
+@media (max-width: 768px) {
+  .container {
+    padding: 0;
+  }
+
+  .card {
+    padding: 1rem;
+  }
+
+  .askRow {
+    flex-direction: column;
+  }
+
+  .controlsRow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

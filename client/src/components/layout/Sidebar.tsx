@@ -62,6 +62,13 @@ const menuItems: MenuItem[] = [
     permissions: ['product:create'],
   },
   {
+    label: 'Reports',
+    href: ROUTES.REPORTS,
+    icon: '📈',
+    roles: ['owner', 'manager'],
+    permissions: ['report:read'],
+  },
+  {
     label: 'Inventory',
     href: '/inventory',
     icon: '📋',
@@ -74,13 +81,6 @@ const menuItems: MenuItem[] = [
     icon: '💰',
     roles: ['owner', 'manager', 'cashier'],
     permissions: ['sale:read'],
-  },
-  {
-    label: 'Reports',
-    href: '/reports',
-    icon: '📈',
-    roles: ['owner', 'manager'],
-    permissions: ['report:read'],
   },
   {
     label: 'Users',
