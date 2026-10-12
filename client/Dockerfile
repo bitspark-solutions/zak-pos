@@ -81,10 +81,9 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 
-# Copy production dependencies from deps stage
-COPY --from=deps --chown=nextjs:nodejs /app/node_modules ./node_modules
-
-# Copy built application from build stage
+# The Next.js standalone output already contains its own minimal, correctly
+# traced node_modules, so we copy it directly from the build stage instead of
+# the prod-only deps stage (which can miss server-side-only packages).
 COPY --from=build --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=build --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=build --chown=nextjs:nodejs /app/public ./public
@@ -98,9 +97,10 @@ USER nextjs
 # Expose port
 EXPOSE 3000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:3000/api/health || exit 1
+# Health check: the app is a Next.js router app; /login is a real page that
+# returns HTTP 200 (there is no /api/health route in the client).
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:3000/login || exit 1
 
 # Start the application with dumb-init
 CMD ["dumb-init", "node", "server.js"]

@@ -49,8 +49,11 @@ RUN npm ci
 # Copy source code
 COPY . .
 
-# Generate Prisma client (if using Prisma)
-# RUN npx prisma generate
+# Generate the Prisma client from prisma/schema.prisma before nest build.
+# A placeholder DATABASE_URL is required by the prisma CLI for datasource
+# validation at generate time; it is overridden at runtime via environment.
+ENV DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder
+RUN npx prisma generate
 
 # Build the application
 RUN npm run build
@@ -63,19 +66,23 @@ FROM base AS runtime
 # Set environment to production
 ENV NODE_ENV=production
 ENV PORT=3000
+# Keep npx/npm caches writable by the non-root user inside /app
+ENV HOME=/app
 
-# Copy production dependencies from deps stage
-COPY --from=deps --chown=nestjs:nodejs /app/node_modules ./node_modules
+# Copy the FULL node_modules from the build stage (not the prod-only deps
+# stage): the runtime needs the generated @prisma/client AND the prisma CLI
+# so that `prisma migrate deploy` can run on container boot.
+COPY --from=build --chown=nestjs:nodejs /app/node_modules ./node_modules
 
 # Copy built application from build stage
 COPY --from=build --chown=nestjs:nodejs /app/dist ./dist
 COPY --from=build --chown=nestjs:nodejs /app/package*.json ./
 
-# Copy Prisma schema and migrations (if using Prisma)
-# COPY --from=build --chown=nestjs:nodejs /app/prisma ./prisma
+# Copy Prisma schema and migrations (required by `prisma migrate deploy`)
+COPY --from=build --chown=nestjs:nodejs /app/prisma ./prisma
 
-# Create logs directory
-RUN mkdir -p /app/logs && chown nestjs:nodejs /app/logs
+# Create runtime directories
+RUN mkdir -p /app/logs /app/uploads && chown -R nestjs:nodejs /app/logs /app/uploads
 
 # Switch to non-root user
 USER nestjs
@@ -88,7 +95,7 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:3000/api/v1/health || exit 1
 
 # Start the application with dumb-init
-CMD ["dumb-init", "node", "dist/main"]
+CMD ["dumb-init", "node", "dist/main.js"]
 
 # =============================================================================
 # STAGE 5: Development Runtime

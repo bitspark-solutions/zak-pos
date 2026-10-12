@@ -1,0 +1,23 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# Local env / secrets
+.env
+.env.*
+
+# Logs and local run artifacts
+*.log
+logs/
+docker-compose.override.yml
+
+# Git / IDE
+.git/
+.gitignore
+.vscode/
+.idea/
