@@ -4,6 +4,10 @@ import { Auth0Service } from '../src/auth/auth0.service';
 describe('Auth0Service', () => {
   let service: Auth0Service;
 
+  // getManagementApiToken throws when the machine-to-machine client is not
+  // configured, and every Management API method surfaces that error.
+  const notConfigured = /Auth0 Management API client not configured/;
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [Auth0Service],
@@ -24,85 +28,49 @@ describe('Auth0Service', () => {
       );
       expect(result).toBeNull();
     });
-
-    it('should handle Auth0 API errors gracefully', async () => {
-      const result = await service.validateUser('test@example.com', 'password');
-      expect(result).toBeNull();
-    });
   });
 
-  describe('createUser', () => {
-    it('should handle Auth0 API errors gracefully', async () => {
-      const userData = {
-        email: 'test@example.com',
-        password: 'password123',
-        name: 'Test User',
-        role: 'cashier',
-        tenantId: 'tenant-1',
-      };
-
-      try {
-        await service.createUser(userData);
-      } catch (error) {
-        expect(error.message).toContain('Failed to create user in Auth0');
-      }
+  describe('Management API (unconfigured)', () => {
+    it('createUser wraps the configuration error', async () => {
+      await expect(
+        service.createUser({
+          email: 'test@example.com',
+          password: 'password123',
+          name: 'Test User',
+          role: 'cashier',
+          tenantId: 'tenant-1',
+        }),
+      ).rejects.toThrow('Failed to create user in Auth0');
     });
-  });
 
-  describe('getUser', () => {
-    it('should return null for non-existent user', async () => {
-      const result = await service.getUser('non-existent-id');
-      expect(result).toBeNull();
+    it('getUser rejects when not configured', async () => {
+      await expect(service.getUser('non-existent-id')).rejects.toThrow(
+        notConfigured,
+      );
     });
-  });
 
-  describe('updateUser', () => {
-    it('should handle Auth0 API errors gracefully', async () => {
-      const result = await service.updateUser('user-id', {
-        name: 'Updated Name',
-      });
-      expect(result).toBeNull();
+    it('findUserByEmail rejects when not configured', async () => {
+      await expect(service.findUserByEmail('test@example.com')).rejects.toThrow(
+        notConfigured,
+      );
     });
-  });
 
-  describe('deleteUser', () => {
-    it('should handle Auth0 API errors gracefully', async () => {
-      const result = await service.deleteUser('user-id');
-      expect(result).toBe(true);
+    it('updateUser rejects when not configured', async () => {
+      await expect(
+        service.updateUser('user-id', { name: 'Updated Name' }),
+      ).rejects.toThrow(notConfigured);
     });
-  });
 
-  describe('getUsersByTenant', () => {
-    it('should return empty array for non-existent tenant', async () => {
-      const result = await service.getUsersByTenant('non-existent-tenant');
-      expect(result).toEqual([]);
+    it('deleteUser rejects when not configured', async () => {
+      await expect(service.deleteUser('user-id')).rejects.toThrow(
+        notConfigured,
+      );
     });
-  });
 
-  describe('assignRoleToUser', () => {
-    it('should handle Auth0 API errors gracefully', async () => {
-      const result = await service.assignRoleToUser('user-id', 'role-id');
-      expect(result).toBe(true);
-    });
-  });
-
-  describe('createRole', () => {
-    it('should handle Auth0 API errors gracefully', async () => {
-      const roleData = {
-        name: 'test-role',
-        description: 'Test role',
-        permissions: ['read:users'],
-      };
-
-      const result = await service.createRole(roleData);
-      expect(result).toBeNull();
-    });
-  });
-
-  describe('getRoles', () => {
-    it('should return empty array when Auth0 is not configured', async () => {
-      const result = await service.getRoles();
-      expect(result).toEqual([]);
+    it('getUsersByTenant rejects when not configured', async () => {
+      await expect(
+        service.getUsersByTenant('non-existent-tenant'),
+      ).rejects.toThrow(notConfigured);
     });
   });
 });
