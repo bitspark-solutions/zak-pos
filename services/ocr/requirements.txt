@@ -14,7 +14,7 @@ transformers==4.55.4
 # microsoft/trocr-* tokenizer files need these at from_pretrained time
 tiktoken>=0.8.0
 sentencepiece>=0.2.0
-protobuf>=5.28.0
+protobuf>=7.36.2
 Pillow==11.1.0
 opencv-python-headless>=4.9.0.80
 numpy==1.26.4
