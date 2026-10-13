@@ -7,16 +7,21 @@ import {
   Body,
   Param,
   Query,
+  Res,
+  Header,
   UseGuards,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { InvoiceService } from './invoice.service';
 import {
   CreateInvoiceDto,
+  CreateInvoiceFromSaleDto,
   UpdateInvoiceDto,
   InvoiceQueryDto,
 } from './dto/invoice.dto';
+import type { IInvoice } from './interfaces/invoice.interface';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
@@ -42,11 +47,61 @@ export class InvoiceController {
     return this.invoiceService.create(createInvoiceDto, userId, tenantId);
   }
 
+  /**
+   * Cashier-friendly invoice creation from a completed sale.
+   *
+   * Guard choice: CASHIER / MANAGER / OWNER all carry SALE_CREATE (this mirrors
+   * POST /sales/commit), and it is the permission staff already have to complete
+   * a sale. CASHIER does *not* hold INVOICE_CREATE, so we require SALE_CREATE
+   * instead of relaxing the INVOICE_CREATE constant or inventing a new cashier
+   * invoice permission. ADMIN is intentionally excluded: it is the platform
+   * (tenant-management) role and holds neither SALE_CREATE nor INVOICE_CREATE,
+   * so it does not operate the POS at all. Returns 201 on first create and 200
+   * when an invoice already exists for the sale (idempotent).
+   */
+  @Post('from-sale')
+  @Roles(Role.OWNER, Role.MANAGER, Role.CASHIER)
+  @RequirePermissions(Permission.SALE_CREATE)
+  async createFromSale(
+    @Body() createInvoiceFromSaleDto: CreateInvoiceFromSaleDto,
+    @CurrentTenant() tenantId: string,
+    @CurrentUserId() userId: string,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<IInvoice> {
+    const { invoice, created } = await this.invoiceService.createFromSale(
+      createInvoiceFromSaleDto.saleId,
+      userId,
+      tenantId,
+    );
+    res.status(created ? HttpStatus.CREATED : HttpStatus.OK);
+    return invoice;
+  }
+
   @Get()
   @Roles(Role.ADMIN, Role.OWNER, Role.MANAGER, Role.CASHIER)
   @RequirePermissions(Permission.INVOICE_READ)
   findAll(@Query() query: InvoiceQueryDto, @CurrentTenant() tenantId: string) {
     return this.invoiceService.findAll(query, tenantId);
+  }
+
+  @Get(':id/pdf')
+  @Roles(Role.ADMIN, Role.OWNER, Role.MANAGER, Role.CASHIER)
+  @RequirePermissions(Permission.INVOICE_READ)
+  @Header('Content-Type', 'application/pdf')
+  async getPdf(
+    @Param('id') id: string,
+    @CurrentTenant() tenantId: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const { buffer, filename } = await this.invoiceService.generateInvoicePdf(
+      id,
+      tenantId,
+    );
+    // Library-mode @Res: set every header explicitly so the raw PDF bytes are
+    // sent as-is instead of being JSON-serialized by Nest's response pipeline.
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+    res.status(HttpStatus.OK).send(buffer);
   }
 
   @Get(':id')

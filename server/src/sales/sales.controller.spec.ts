@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { HttpStatus } from '@nestjs/common';
 import { SalesController } from './sales.controller';
 import { SalesService } from './sales.service';
 import type {
@@ -17,6 +18,7 @@ describe('SalesController', () => {
     findAll: jest.fn(),
     findById: jest.fn(),
     findByIdWithLines: jest.fn(),
+    getSaleReceiptPdf: jest.fn(),
     refund: jest.fn(),
   };
 
@@ -98,6 +100,34 @@ describe('SalesController', () => {
         's1',
         'tenant-1',
       );
+    });
+  });
+
+  describe('receipt', () => {
+    it('sends the sale receipt PDF bytes with a pdf content-type', async () => {
+      const buffer = Buffer.from('%PDF-1.4 receipt');
+      mockSalesService.getSaleReceiptPdf.mockResolvedValue({
+        buffer,
+        filename: 'sale-s1.pdf',
+      });
+      const res = {
+        setHeader: jest.fn(),
+        status: jest.fn().mockReturnThis(),
+        send: jest.fn(),
+      };
+
+      await controller.receipt('s1', 'tenant-1', res as any);
+
+      expect(mockSalesService.getSaleReceiptPdf).toHaveBeenCalledWith(
+        's1',
+        'tenant-1',
+      );
+      expect(res.setHeader).toHaveBeenCalledWith(
+        'Content-Type',
+        'application/pdf',
+      );
+      expect(res.status).toHaveBeenCalledWith(HttpStatus.OK);
+      expect(res.send).toHaveBeenCalledWith(buffer);
     });
   });
 

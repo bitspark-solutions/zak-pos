@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { HttpStatus } from '@nestjs/common';
 import { InvoiceController } from './invoice.controller';
 import { InvoiceService } from './invoice.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -10,6 +11,8 @@ describe('InvoiceController', () => {
 
   const mockInvoiceService = {
     create: jest.fn(),
+    createFromSale: jest.fn(),
+    generateInvoicePdf: jest.fn(),
     findAll: jest.fn(),
     findOne: jest.fn(),
     update: jest.fn(),
@@ -50,6 +53,80 @@ describe('InvoiceController', () => {
         'user-1',
         'tenant-1',
       );
+    });
+  });
+
+  describe('createFromSale', () => {
+    it('creates an invoice and responds 201', async () => {
+      mockInvoiceService.createFromSale.mockResolvedValue({
+        invoice: { id: 'inv-1' },
+        created: true,
+      });
+      const res = { status: jest.fn().mockReturnThis() };
+
+      const result = await controller.createFromSale(
+        { saleId: 'sale-1' },
+        'tenant-1',
+        'user-1',
+        res as any,
+      );
+
+      expect(result).toEqual({ id: 'inv-1' });
+      expect(mockInvoiceService.createFromSale).toHaveBeenCalledWith(
+        'sale-1',
+        'user-1',
+        'tenant-1',
+      );
+      expect(res.status).toHaveBeenCalledWith(HttpStatus.CREATED);
+    });
+
+    it('returns the existing invoice with a 200 (idempotent)', async () => {
+      mockInvoiceService.createFromSale.mockResolvedValue({
+        invoice: { id: 'inv-1' },
+        created: false,
+      });
+      const res = { status: jest.fn().mockReturnThis() };
+
+      await controller.createFromSale(
+        { saleId: 'sale-1' },
+        'tenant-1',
+        'user-1',
+        res as any,
+      );
+
+      expect(res.status).toHaveBeenCalledWith(HttpStatus.OK);
+    });
+  });
+
+  describe('getPdf', () => {
+    it('sends the invoice PDF bytes with a pdf content-type', async () => {
+      const buffer = Buffer.from('%PDF-1.4 bytes');
+      mockInvoiceService.generateInvoicePdf.mockResolvedValue({
+        buffer,
+        filename: 'INV-20260913-0001.pdf',
+      });
+      const res = {
+        setHeader: jest.fn(),
+        status: jest.fn().mockReturnThis(),
+        send: jest.fn(),
+      };
+
+      await controller.getPdf('inv-1', 'tenant-1', res as any);
+
+      expect(mockInvoiceService.generateInvoicePdf).toHaveBeenCalledWith(
+        'inv-1',
+        'tenant-1',
+      );
+      expect(res.setHeader).toHaveBeenCalledWith(
+        'Content-Type',
+        'application/pdf',
+      );
+      expect(res.setHeader).toHaveBeenCalledWith(
+        'Content-Disposition',
+        'inline; filename="INV-20260913-0001.pdf"',
+      );
+      expect(res.status).toHaveBeenCalledWith(HttpStatus.OK);
+      expect(res.send).toHaveBeenCalledWith(buffer);
     });
   });
 

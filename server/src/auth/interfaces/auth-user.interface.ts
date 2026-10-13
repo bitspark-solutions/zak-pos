@@ -3,6 +3,9 @@ import type { Request } from 'express';
 /**
  * Decoded JWT payload issued by AuthService/AuthController.
  * `sub` is the local DB user id; shopId/auth0Id are optional context claims.
+ * `type` is only ever set on CUSTOMER tokens ('customer'); the staff strategy
+ * must reject those so the staff and customer audiences are never
+ * interchangeable (see CustomerJwtStrategy for the counterpart).
  */
 export interface TokenPayload {
   sub: string;
@@ -12,6 +15,7 @@ export interface TokenPayload {
   shopId?: string;
   auth0Id?: string;
   permissions?: string[];
+  type?: string;
 }
 
 /**

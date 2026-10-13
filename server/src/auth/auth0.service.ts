@@ -6,6 +6,7 @@ export interface Auth0UserInfo {
   email: string;
   name?: string;
   nickname?: string;
+  picture?: string;
   user_metadata?: {
     role?: string;
     tenantId?: string;

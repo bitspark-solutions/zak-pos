@@ -5,6 +5,7 @@ import { DatabaseService } from '../database/database.service';
 import { CartService } from '../cart/cart.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { TenantService } from '../auth/tenant.service';
+import { ReceiptPdfService } from '../pdf/receipt-pdf.service';
 
 describe('SalesService', () => {
   let service: SalesService;
@@ -69,6 +70,11 @@ describe('SalesService', () => {
     seedAccounts: jest.fn().mockResolvedValue(accountsMap),
   };
 
+  // Pure PDF renderer stand-in for the sale receipt endpoint.
+  const mockReceiptPdfService = {
+    render: jest.fn().mockResolvedValue(Buffer.from('%PDF-1.4 receipt-bytes')),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
     mockDatabaseService.withTenant.mockImplementation((tenantId, fn) =>
@@ -81,6 +87,9 @@ describe('SalesService', () => {
     mockTx.journal.create.mockResolvedValue({ id: 'journal-1' });
     mockTx.journalLine.create.mockResolvedValue({});
     mockTx.saleLine.findMany.mockResolvedValue([]);
+    mockReceiptPdfService.render.mockResolvedValue(
+      Buffer.from('%PDF-1.4 receipt-bytes'),
+    );
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -89,6 +98,7 @@ describe('SalesService', () => {
         { provide: CartService, useValue: mockCartService },
         { provide: InventoryService, useValue: mockInventoryService },
         { provide: TenantService, useValue: mockTenantService },
+        { provide: ReceiptPdfService, useValue: mockReceiptPdfService },
       ],
     }).compile();
 
@@ -429,6 +439,81 @@ describe('SalesService', () => {
         'tenant-1',
         expect.any(Function),
       );
+    });
+  });
+
+  describe('getSaleReceiptPdf', () => {
+    const saleForPdf = {
+      id: 'sale-1',
+      tenantId: 'tenant-1',
+      shopId: 'shop-1',
+      cashierId: 'user-1',
+      status: 'completed',
+      channel: 'pos',
+      subtotal: 200,
+      discount: 20,
+      tax: 30,
+      total: 210,
+      paymentStatus: 'paid',
+      currency: 'BDT',
+      createdAt: new Date('2026-10-14T09:00:00Z'),
+      postedAt: new Date('2026-10-14T09:05:00Z'),
+      shop: { name: 'ZakPOS Demo', address: 'Dhaka' },
+      customer: { name: 'Jane', phone: '01700' },
+      saleLines: [
+        {
+          qty: 2,
+          unitPrice: 100,
+          lineTotal: 200,
+          product: { name: 'Tea 500g' },
+        },
+      ],
+      payments: [{ method: 'cash' }],
+    };
+
+    it('renders a tenant-scoped sale to non-empty PDF bytes', async () => {
+      mockTx.sale.findFirst.mockResolvedValue(saleForPdf);
+
+      const result = await service.getSaleReceiptPdf('sale-1', 'tenant-1');
+
+      expect(Buffer.isBuffer(result.buffer)).toBe(true);
+      expect(result.buffer.length).toBeGreaterThan(0);
+      expect(result.filename).toBe('sale-sale-1.pdf');
+      expect(mockTx.sale.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'sale-1', tenantId: 'tenant-1' },
+        }),
+      );
+    });
+
+    it('passes the normalized receipt payload to the PDF renderer', async () => {
+      mockTx.sale.findFirst.mockResolvedValue(saleForPdf);
+
+      await service.getSaleReceiptPdf('sale-1', 'tenant-1');
+
+      expect(mockReceiptPdfService.render).toHaveBeenCalledWith(
+        expect.objectContaining({
+          shopName: 'ZakPOS Demo',
+          documentNumber: 'sale-1',
+          documentTitle: 'SALE RECEIPT',
+          customerName: 'Jane',
+          lines: [{ name: 'Tea 500g', qty: 2, unitPrice: 100, amount: 200 }],
+          subtotal: 200,
+          discount: 20,
+          tax: 30,
+          total: 210,
+          paymentMethod: 'cash',
+        }),
+      );
+    });
+
+    it('throws NotFoundException for a cross-tenant / missing sale', async () => {
+      mockTx.sale.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.getSaleReceiptPdf('sale-x', 'tenant-2'),
+      ).rejects.toThrow(NotFoundException);
+      expect(mockReceiptPdfService.render).not.toHaveBeenCalled();
     });
   });
 

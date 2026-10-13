@@ -5,10 +5,13 @@ import {
   Body,
   Param,
   Query,
+  Res,
+  Header,
   UseGuards,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { SalesService } from './sales.service';
 import type {
   CommitSaleDto,
@@ -46,6 +49,25 @@ export class SalesController {
     @Query('shopId') shopId?: string,
   ) {
     return this.salesService.findAll(tenantId, shopId);
+  }
+
+  @Get(':id/receipt')
+  @Roles(Role.OWNER, Role.MANAGER, Role.CASHIER)
+  @RequirePermissions(Permission.SALE_READ)
+  @Header('Content-Type', 'application/pdf')
+  async receipt(
+    @Param('id') id: string,
+    @CurrentTenant() tenantId: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const { buffer, filename } = await this.salesService.getSaleReceiptPdf(
+      id,
+      tenantId,
+    );
+    // Library-mode @Res: set headers explicitly so raw PDF bytes are streamed.
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+    res.status(HttpStatus.OK).send(buffer);
   }
 
   @Get(':id')

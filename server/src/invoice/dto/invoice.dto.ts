@@ -30,6 +30,11 @@ export class CreateInvoiceDto {
   notes?: string;
 }
 
+export class CreateInvoiceFromSaleDto {
+  @IsString()
+  saleId: string;
+}
+
 export class UpdateInvoiceDto {
   @IsEnum(['draft', 'sent', 'confirmed', 'paid', 'cancelled'])
   @IsOptional()

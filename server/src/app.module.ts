@@ -13,6 +13,7 @@ import { InventoryModule } from './inventory/inventory.module';
 import { CartModule } from './cart/cart.module';
 import { SalesModule } from './sales/sales.module';
 import { InvoiceModule } from './invoice/invoice.module';
+import { CustomerModule } from './customer/customer.module';
 import { InvitationsModule } from './invitations/invitations.module';
 import { ShopsModule } from './shops/shops.module';
 import { TenantSettingsModule } from './tenant-settings/tenant-settings.module';
@@ -33,6 +34,7 @@ import { ForecastingModule } from './forecasting/forecasting.module';
     CartModule,
     SalesModule,
     InvoiceModule,
+    CustomerModule,
     InvitationsModule,
     ShopsModule,
     TenantSettingsModule,

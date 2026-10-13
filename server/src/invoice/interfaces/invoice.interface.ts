@@ -12,6 +12,12 @@ export interface IInvoice {
   discount: number;
   total: number;
   notes?: string | null;
+  /**
+   * Portal-share axis (G2a): set by auto-share when the sale's linked tenant
+   * contact maps to a phone-verified CustomerAccount that follows this tenant.
+   * Independent of `status` (draft/sent/confirmed/paid/cancelled).
+   */
+  sharedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }

@@ -10,6 +10,8 @@ import { CartService } from '../cart/cart.service';
 import type { Cart } from '../cart/interfaces/cart.interface';
 import { InventoryService } from '../inventory/inventory.service';
 import { TenantService } from '../auth/tenant.service';
+import { ReceiptPdfService } from '../pdf/receipt-pdf.service';
+import type { ReceiptPdfPayload } from '../pdf/interfaces/receipt-pdf.interface';
 import type {
   CommitSaleDto,
   RefundSaleDto,
@@ -85,6 +87,7 @@ export class SalesService {
     private readonly cartService: CartService,
     private readonly inventoryService: InventoryService,
     private readonly tenantService: TenantService,
+    private readonly receiptPdf: ReceiptPdfService,
   ) {}
 
   async commitSale(
@@ -567,6 +570,65 @@ export class SalesService {
         lineTotal: Number(sl.lineTotal),
       })),
     };
+  }
+
+  /**
+   * Render a tenant-scoped sale as a thermal-slip receipt PDF, so a cashier can
+   * print or share the slip before formalizing an invoice. Uses the same
+   * renderer as the invoice PDF; the sale id stands in for a document number.
+   * Cross-tenant ids resolve to no row under RLS, hence a 404.
+   */
+  async getSaleReceiptPdf(
+    id: string,
+    tenantId: string,
+  ): Promise<{ buffer: Buffer; filename: string }> {
+    return this.databaseService.withTenant(tenantId, async (tx) => {
+      const sale = await tx.sale.findFirst({
+        where: { id, tenantId },
+        include: {
+          shop: { select: { name: true, address: true } },
+          customer: { select: { name: true, phone: true } },
+          saleLines: {
+            select: {
+              qty: true,
+              unitPrice: true,
+              lineTotal: true,
+              product: { select: { name: true } },
+            },
+          },
+          payments: { select: { method: true } },
+        },
+      });
+
+      if (!sale) {
+        throw new NotFoundException(`Sale with ID ${id} not found`);
+      }
+
+      const payload: ReceiptPdfPayload = {
+        shopName: sale.shop.name,
+        shopAddress: sale.shop.address,
+        documentNumber: sale.id,
+        documentTitle: 'SALE RECEIPT',
+        date: sale.postedAt ?? sale.createdAt,
+        customerName: sale.customer?.name ?? null,
+        customerPhone: sale.customer?.phone ?? null,
+        lines: sale.saleLines.map((line) => ({
+          name: line.product.name,
+          qty: Number(line.qty),
+          unitPrice: Number(line.unitPrice),
+          amount: Number(line.lineTotal),
+        })),
+        subtotal: Number(sale.subtotal),
+        discount: Number(sale.discount),
+        tax: Number(sale.tax),
+        total: Number(sale.total),
+        paymentMethod: sale.payments[0]?.method ?? null,
+        currency: sale.currency,
+      };
+
+      const buffer = await this.receiptPdf.render(payload);
+      return { buffer, filename: `sale-${sale.id}.pdf` };
+    });
   }
 
   async refund(

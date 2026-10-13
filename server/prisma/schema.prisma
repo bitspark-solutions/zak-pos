@@ -45,6 +45,7 @@ model Tenant {
   saleLines       SaleLine[]
   inventoryMovements InventoryMovement[]
   invoices        Invoice[]
+  follows         CustomerFollow[]
 
   @@map("tenants")
 }
@@ -254,6 +255,7 @@ model JournalLine {
 model Customer {
   id          String   @id @default(cuid())
   tenantId    String
+  accountId   String? // links this shop's contact row to a global CustomerAccount (null = shop-local walk-in)
   name        String
   phone       String?
   email       String?
@@ -269,8 +271,54 @@ model Customer {
   storeCredits StoreCredit[]
   payments     Payment[]
   invoices     Invoice[]
+  account      CustomerAccount? @relation("CustomerAccountContacts", fields: [accountId], references: [id], onDelete: SetNull)
 
   @@map("customers")
+}
+
+// =============================================================================
+// CUSTOMER PLATFORM (global identity, NOT tenant-scoped)
+// =============================================================================
+// CustomerAccount is the cross-tenant login identity (phone OTP / social).
+// It deliberately has NO tenantId: it is never RLS-scoped and is only read or
+// written through the admin (RLS-bypassing) client. The nullable accountId on
+// Customer links a global account to each shop's tenant-scoped contact row.
+model CustomerAccount {
+  id              String    @id @default(cuid())
+  auth0UserId     String?   @unique // social login subject (Auth0 `sub`)
+  phone           String?   @unique // Postgres allows many NULLs: social-only accounts may have no phone
+  email           String?
+  name            String
+  photoUrl        String?
+  phoneVerifiedAt DateTime? // set when an OTP against `phone` succeeded
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relationships
+  customers Customer[]       @relation("CustomerAccountContacts")
+  follows   CustomerFollow[]
+
+  @@map("customer_accounts")
+}
+
+// Tenant-scoped: a CustomerAccount following a business (tenant).
+// Must stay in sync with the RLS policy + zakpos_app grants added for
+// "customer_follows" in the add_customer_platform migration.
+model CustomerFollow {
+  id        String   @id @default(cuid())
+  accountId String
+  tenantId  String
+  active    Boolean  @default(true)
+  source    String // qr, link
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  account CustomerAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  tenant  Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, tenantId])
+  @@map("customer_follows")
 }
 
 model Supplier {
@@ -694,6 +742,7 @@ model Invoice {
   discount     Decimal  @default(0) @db.Decimal(15, 2)
   total        Decimal  @default(0) @db.Decimal(15, 2)
   notes        String?
+  sharedAt     DateTime? // portal-share axis: set by auto-share when the customer's verified account follows this tenant; independent of status
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
