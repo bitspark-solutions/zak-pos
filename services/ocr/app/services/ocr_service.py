@@ -13,7 +13,6 @@ from typing import Dict, List, Optional, Any
 from PIL import Image
 import numpy as np
 import structlog
-import cv2
 
 from app.core.config import settings, MODEL_CONFIGS
 from app.core.redis import cache_ocr_result, get_cached_ocr_result

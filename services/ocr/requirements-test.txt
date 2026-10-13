@@ -1,0 +1,18 @@
+# Minimal dependency set for running the tests/ suite in CI (ubuntu, python 3.11).
+# Deliberately excludes torch/transformers/pytesseract/opencv - app code guards
+# those imports; the suite mocks OCRService.
+fastapi==0.115.8
+pydantic==2.10.6
+pydantic-settings==2.7.1
+httpx==0.28.1
+python-multipart==0.0.20
+sqlalchemy==2.0.38
+asyncpg==0.30.0
+redis==5.2.1
+structlog==24.4.0
+prometheus-client==0.21.1
+Pillow==11.1.0
+numpy==1.26.4
+pypdf==5.1.0
+pytest==8.3.4
+pytest-asyncio==0.25.3
