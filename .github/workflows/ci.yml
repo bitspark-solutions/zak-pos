@@ -1,9 +1,14 @@
 name: CI
 
+# Disabled for automatic runs (user request 2026-10-14). Public-repo Actions are
+# free, but to stop all runs the push/pull_request triggers were removed.
+# Re-enable by restoring:
+#   on:
+#     push:
+#       branches: [master]
+#     pull_request:
 on:
-  push:
-    branches: [master]
-  pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
