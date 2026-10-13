@@ -164,6 +164,9 @@ export default function DashboardScreen() {
 
     if (card.onPress) {
       card.onPress();
+    } else if (card.route === '/pos') {
+      // G1b: barcode-first POS (scan -> cart -> checkout -> receipt)
+      router.push('/pos' as never);
     } else if (card.route) {
       // For now, show coming soon for routes that don't exist yet
       Alert.alert('Coming Soon', `${card.title} feature will be available soon.`);

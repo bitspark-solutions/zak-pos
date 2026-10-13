@@ -38,6 +38,13 @@
             "backgroundColor": "#000000"
           }
         }
+      ],
+      "expo-audio",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Zakpos to scan product barcodes for fast checkout."
+        }
       ]
     ],
     "experiments": {
