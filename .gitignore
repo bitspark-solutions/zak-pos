@@ -142,6 +142,9 @@ temp/
 
 # Package manager files
 package-lock.json
+# server/ and client/ lockfiles ARE tracked - CI needs them for npm ci
+!server/package-lock.json
+!client/package-lock.json
 yarn.lock
 
 # Next.js
