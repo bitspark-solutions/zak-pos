@@ -17,6 +17,18 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # transformers >=5 cannot load the microsoft/trocr-small-printed
+      # checkpoint (verified version-matrix probe); 4.55.4 is the ceiling.
+      # CI mocks the model, so a bump here would pass CI and break runtime.
+      - dependency-name: transformers
+        versions: ["= 5.*", ">= 5.0.0-0"]
+      # opencv 5.x requires numpy>=2 while requirements pins numpy==1.26.4
+      # (torch ecosystem). Keep both in lockstep manually.
+      - dependency-name: opencv-python-headless
+        versions: ["= 5.*", ">= 5.0.0-0"]
+      - dependency-name: numpy
+        versions: [">= 2.0.0-0"]
 
   - package-ecosystem: github-actions
     directory: /
