@@ -5,6 +5,8 @@ Redis Configuration for ZakPOS OCR Server
 Redis setup for caching, queuing, and session management.
 """
 
+import json
+
 import redis.asyncio as redis
 import structlog
 from typing import Optional
@@ -77,7 +79,7 @@ async def cache_ocr_result(job_id: str, result: dict, ttl_seconds: int = None) -
         await redis_client.setex(
             cache_key,
             ttl,
-            result
+            json.dumps(result, default=str)
         )
         logger.debug("Cached OCR result", job_id=job_id, ttl=ttl)
     except Exception as e:
@@ -94,7 +96,7 @@ async def get_cached_ocr_result(job_id: str) -> Optional[dict]:
         result = await redis_client.get(cache_key)
         if result:
             logger.debug("Retrieved cached OCR result", job_id=job_id)
-            return result
+            return json.loads(result)
     except Exception as e:
         logger.error("Failed to get cached OCR result", error=str(e), job_id=job_id)
 
@@ -111,7 +113,7 @@ async def cache_model_features(image_hash: str, features: dict) -> None:
         await redis_client.setex(
             cache_key,
             86400,  # 24 hours
-            features
+            json.dumps(features, default=str)
         )
         logger.debug("Cached model features", image_hash=image_hash)
     except Exception as e:
@@ -128,7 +130,7 @@ async def get_cached_model_features(image_hash: str) -> Optional[dict]:
         features = await redis_client.get(cache_key)
         if features:
             logger.debug("Retrieved cached model features", image_hash=image_hash)
-            return features
+            return json.loads(features)
     except Exception as e:
         logger.error("Failed to get cached model features", error=str(e), image_hash=image_hash)
 

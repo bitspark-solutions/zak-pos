@@ -119,13 +119,21 @@ def get_log_level() -> str:
 
 
 # Model paths and configurations
+# TrOCR is split into "load" kwargs (accepted by from_pretrained) and
+# "generation" kwargs (only valid on model.generate) - modern transformers
+# forwards from_pretrained kwargs into the model constructor and raises
+# TypeError on generation options.
 MODEL_CONFIGS = {
     "microsoft/trocr-small-printed": {
-        "max_length": 128,
-        "num_beams": 1,
-        "early_stopping": True,
-        "use_cache": True,
-        "torch_dtype": "float16" if settings.OCR_ENABLE_GPU else "float32",
+        "load": {
+            "torch_dtype": "float16" if settings.OCR_ENABLE_GPU else "float32",
+        },
+        "generation": {
+            "max_length": 128,
+            "num_beams": 1,
+            "early_stopping": True,
+            "use_cache": True,
+        },
     },
     "tesseract": {
         "lang": "eng",

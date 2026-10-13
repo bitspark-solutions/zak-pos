@@ -19,6 +19,9 @@ from app.core.redis import check_redis_health
 # Configure structured logging
 logger = structlog.get_logger(__name__)
 
+# Module import time as service start reference for uptime reporting
+_SERVICE_START_TIME = time.time()
+
 # Prometheus metrics
 REQUEST_COUNT = Counter(
     "ocr_requests_total",
@@ -143,24 +146,33 @@ def setup_monitoring(app: FastAPI) -> None:
 
 # Service health check functions
 async def get_system_health() -> dict:
-    """Get comprehensive system health status."""
+    """Get comprehensive system health status.
+
+    Return shape matches the HealthStatus response model on
+    app/api/v1/api.py: status, version, uptime_seconds, models_loaded,
+    database, redis, ocr_service at the top level.
+    """
     health_status = {
         "status": "healthy",
         "timestamp": time.time(),
         "version": settings.VERSION,
-        "services": {}
+        "uptime_seconds": int(time.time() - _SERVICE_START_TIME),
+        "models_loaded": [],
+        "database": {},
+        "redis": {},
+        "ocr_service": {}
     }
 
     # Check database
     db_health = await check_database_health()
-    health_status["services"]["database"] = db_health
+    health_status["database"] = db_health
 
     if db_health["status"] != "healthy":
         health_status["status"] = "degraded"
 
     # Check Redis
     redis_health = await check_redis_health()
-    health_status["services"]["redis"] = redis_health
+    health_status["redis"] = redis_health
 
     if redis_health["status"] != "healthy":
         health_status["status"] = "degraded"
@@ -170,21 +182,28 @@ async def get_system_health() -> dict:
         from app.services.ocr_service import OCRService
         ocr_service = OCRService.get_instance()
         ocr_ready = ocr_service.is_ready()
-        health_status["services"]["ocr_service"] = {"status": "ready" if ocr_ready else "not_ready"}
+        health_status["ocr_service"] = {"status": "ready" if ocr_ready else "not_ready"}
 
         if not ocr_ready:
             health_status["status"] = "degraded"
 
     except Exception as e:
-        health_status["services"]["ocr_service"] = {"status": "error", "error": str(e)}
+        health_status["ocr_service"] = {"status": "error", "error": str(e)}
         health_status["status"] = "unhealthy"
 
     # Check models
     try:
         models = await get_loaded_models_info()
-        health_status["services"]["models"] = models
+        health_status["models_loaded"] = [
+            model["name"]
+            for model in models.get("models", [])
+            if model.get("status") in ("loaded", "available")
+        ]
+        if models.get("status") == "error":
+            health_status["status"] = "degraded"
     except Exception as e:
-        health_status["services"]["models"] = {"status": "error", "error": str(e)}
+        health_status["models_loaded"] = []
+        logger.warning("Failed to collect model info", error=str(e))
         health_status["status"] = "degraded"
 
     return health_status

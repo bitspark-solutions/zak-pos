@@ -7,7 +7,14 @@ pydantic-settings==2.7.1
 # OCR and Image Processing
 torch>=2.2.0
 torchvision>=0.17.0
-transformers>=4.40.0
+# Pinned: transformers >=4.42 removed string torch_dtype handling and 5.x is
+# not compatible with the trocr-small-printed checkpoint we load; 4.55.4 is
+# the last 4.x release that loads it cleanly.
+transformers==4.55.4
+# microsoft/trocr-* tokenizer files need these at from_pretrained time
+tiktoken>=0.8.0
+sentencepiece>=0.2.0
+protobuf>=5.28.0
 Pillow==11.1.0
 opencv-python-headless>=4.9.0.80
 numpy==1.26.4

@@ -56,6 +56,7 @@ class OCRService:
         self.logger = structlog.get_logger(__name__)
         self.primary_model = None
         self.processor = None
+        self.generation_kwargs: Dict[str, Any] = {}
         self.fallback_model_available = False
         self.device = "cuda" if settings.OCR_ENABLE_GPU and torch_available and torch.cuda.is_available() else "cpu"
 
@@ -102,9 +103,11 @@ class OCRService:
         try:
             # Load processor and model
             self.processor = TrOCRProcessor.from_pretrained(settings.OCR_MODEL_PRIMARY)
+            model_config = MODEL_CONFIGS[settings.OCR_MODEL_PRIMARY]
+            self.generation_kwargs = dict(model_config["generation"])
             self.primary_model = VisionEncoderDecoderModel.from_pretrained(
                 settings.OCR_MODEL_PRIMARY,
-                **MODEL_CONFIGS[settings.OCR_MODEL_PRIMARY]
+                **model_config["load"]
             )
 
             # Move to GPU if available
@@ -281,9 +284,7 @@ class OCRService:
             with torch.no_grad():
                 generated_ids = self.primary_model.generate(
                     pixel_values,
-                    max_length=128,
-                    num_beams=1,
-                    early_stopping=True
+                    **self.generation_kwargs
                 )
 
             # Decode generated text
