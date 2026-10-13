@@ -24,7 +24,7 @@ pytesseract==0.3.13
 sqlalchemy==2.0.38
 psycopg2-binary==2.9.10
 asyncpg==0.30.0
-redis==5.2.1
+redis==8.1.0
 
 # Kafka for events
 aiokafka==0.12.0
