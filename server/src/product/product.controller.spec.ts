@@ -11,6 +11,7 @@ describe('ProductController', () => {
     findByBarcode: jest.fn(),
     findOne: jest.fn(),
     update: jest.fn(),
+    attachBarcode: jest.fn(),
     remove: jest.fn(),
   };
 
@@ -101,6 +102,32 @@ describe('ProductController', () => {
       expect(mockProductService.update).toHaveBeenCalledWith(
         'p1',
         { name: 'Updated' },
+        'tenant-1',
+      );
+    });
+  });
+
+  describe('attachBarcode', () => {
+    it('should delegate to productService.attachBarcode', async () => {
+      const barcode = {
+        id: 'b1',
+        productId: 'p1',
+        variantId: null,
+        type: 'ean13',
+        value: '8801111000015',
+        isPrimary: false,
+      };
+      mockProductService.attachBarcode.mockResolvedValue(barcode);
+
+      const result = await controller.attachBarcode(
+        'p1',
+        { value: '8801111000015' },
+        'tenant-1',
+      );
+      expect(result).toEqual(barcode);
+      expect(mockProductService.attachBarcode).toHaveBeenCalledWith(
+        'p1',
+        '8801111000015',
         'tenant-1',
       );
     });

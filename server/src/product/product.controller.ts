@@ -16,9 +16,11 @@ import {
   CreateProductDto,
   UpdateProductDto,
   ProductQueryDto,
+  AttachBarcodeDto,
 } from './dto/product.dto';
 import {
   IProductWithDetails,
+  IBarcode,
   PaginatedResult,
 } from './interfaces/product.interface';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -63,6 +65,22 @@ export class ProductController {
     @CurrentTenant() tenantId: string,
   ): Promise<IProductWithDetails | null> {
     return this.productService.findByBarcode(code, tenantId);
+  }
+
+  @Post(':id/barcodes')
+  @Roles(Role.OWNER, Role.MANAGER)
+  @RequirePermissions(Permission.PRODUCT_UPDATE)
+  @HttpCode(HttpStatus.CREATED)
+  async attachBarcode(
+    @Param('id') id: string,
+    @Body() attachBarcodeDto: AttachBarcodeDto,
+    @CurrentTenant() tenantId: string,
+  ): Promise<IBarcode> {
+    return this.productService.attachBarcode(
+      id,
+      attachBarcodeDto.value,
+      tenantId,
+    );
   }
 
   @Get(':id')

@@ -167,6 +167,184 @@ describe('ProductService', () => {
         ),
       ).rejects.toThrow(BadRequestException);
     });
+
+    it('should auto-generate SKU and create a primary barcode when sku omitted but barcode provided', async () => {
+      // SKU generation loop -> findFirst returns null (candidate is free).
+      mockPrisma.product.findFirst.mockResolvedValue(null);
+      // Barcode tenant-wide pre-check -> no existing barcode.
+      mockPrisma.barcode.findFirst.mockResolvedValue(null);
+      mockPrisma.product.create.mockResolvedValue({
+        ...sampleProduct,
+        sku: 'rice-bag-ABC123',
+        barcodes: [],
+      });
+      mockPrisma.barcode.create.mockResolvedValue({
+        id: 'b-new',
+        productId: 'p1',
+        variantId: null,
+        type: 'ean13',
+        value: '8801111000015',
+        isPrimary: true,
+      });
+
+      const result = await service.create(
+        {
+          name: 'Rice Bag',
+          basePrice: 50,
+          barcode: '8801111000015',
+        },
+        'tenant-1',
+      );
+
+      // Auto-generated SKU follows the import slug scheme, not the raw barcode.
+      expect(mockPrisma.product.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            sku: expect.stringMatching(/^rice-bag-[0-9A-F]{6}$/),
+          }),
+        }),
+      );
+      expect(result.sku).not.toBe('8801111000015');
+      expect(result.sku.startsWith('rice-bag-')).toBe(true);
+      // The generated SKU was uniqueness-checked.
+      expect(mockPrisma.product.findFirst).toHaveBeenCalledWith({
+        where: { tenantId: 'tenant-1', sku: expect.any(String) },
+        select: { id: true },
+      });
+      // A primary barcode row was created with the length-inferred type.
+      expect(mockPrisma.barcode.create).toHaveBeenCalledWith({
+        data: {
+          productId: 'p1',
+          type: 'ean13',
+          value: '8801111000015',
+          isPrimary: true,
+        },
+      });
+      expect(result.barcodes).toHaveLength(1);
+      expect(result.barcodes?.[0].value).toBe('8801111000015');
+    });
+
+    it('should ignore non-digit barcode values (pure-digit filter)', async () => {
+      mockPrisma.product.findFirst.mockResolvedValue(null);
+      mockPrisma.product.create.mockResolvedValue({
+        ...sampleProduct,
+        barcodes: [],
+      });
+
+      const result = await service.create(
+        {
+          name: 'Widget',
+          basePrice: 20,
+          barcodes: ['12ab34', 'ABC-9'],
+        },
+        'tenant-1',
+      );
+
+      expect(mockPrisma.barcode.create).not.toHaveBeenCalled();
+      expect(result.barcodes).toHaveLength(0);
+    });
+
+    it('should throw ConflictException if the barcode already exists for this tenant', async () => {
+      mockPrisma.product.findFirst.mockResolvedValue(null);
+      mockPrisma.barcode.findFirst.mockResolvedValue({ id: 'b-existing' });
+
+      await expect(
+        service.create(
+          {
+            name: 'Duplicate Scan',
+            sku: 'SKU-NEW',
+            basePrice: 30,
+            barcode: '8801111000015',
+          },
+          'tenant-1',
+        ),
+      ).rejects.toThrow(ConflictException);
+
+      expect(mockPrisma.barcode.findFirst).toHaveBeenCalledWith({
+        where: { value: '8801111000015', product: { tenantId: 'tenant-1' } },
+      });
+      expect(mockPrisma.product.create).not.toHaveBeenCalled();
+    });
+
+    it('should remain backward-compatible for explicit sku with no barcode', async () => {
+      mockPrisma.product.findFirst.mockResolvedValue(null);
+      mockPrisma.product.create.mockResolvedValue(sampleProduct);
+
+      const result = await service.create(
+        {
+          name: 'Plain Product',
+          sku: 'SKU-001',
+          basePrice: 100,
+        },
+        'tenant-1',
+      );
+
+      expect(result.sku).toBe('SKU-001');
+      expect(mockPrisma.barcode.findFirst).not.toHaveBeenCalled();
+      expect(mockPrisma.barcode.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('attachBarcode', () => {
+    it('should attach a non-primary barcode to an existing product', async () => {
+      mockPrisma.product.findFirst.mockResolvedValue({ id: 'p1' });
+      mockPrisma.barcode.findFirst.mockResolvedValue(null);
+      mockPrisma.barcode.create.mockResolvedValue({
+        id: 'b2',
+        productId: 'p1',
+        variantId: null,
+        type: 'upc',
+        value: '012345678901',
+        isPrimary: false,
+      });
+
+      const result = await service.attachBarcode(
+        'p1',
+        '012345678901',
+        'tenant-1',
+      );
+
+      expect(result).toEqual({
+        id: 'b2',
+        productId: 'p1',
+        variantId: null,
+        type: 'upc',
+        value: '012345678901',
+        isPrimary: false,
+      });
+      expect(mockPrisma.barcode.create).toHaveBeenCalledWith({
+        data: {
+          productId: 'p1',
+          type: 'upc',
+          value: '012345678901',
+          isPrimary: false,
+        },
+      });
+    });
+
+    it('should throw BadRequestException for a non-digit barcode', async () => {
+      await expect(
+        service.attachBarcode('p1', 'abc-123', 'tenant-1'),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockPrisma.barcode.create).not.toHaveBeenCalled();
+    });
+
+    it('should throw NotFoundException if the product does not exist', async () => {
+      mockPrisma.product.findFirst.mockResolvedValue(null);
+      await expect(
+        service.attachBarcode('p999', '123456789012', 'tenant-1'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw ConflictException if the barcode is already assigned', async () => {
+      mockPrisma.product.findFirst.mockResolvedValue({ id: 'p1' });
+      mockPrisma.barcode.findFirst.mockResolvedValue({ id: 'b-existing' });
+
+      await expect(
+        service.attachBarcode('p1', '123456789012', 'tenant-1'),
+      ).rejects.toThrow(ConflictException);
+      expect(mockPrisma.barcode.create).not.toHaveBeenCalled();
+    });
   });
 
   describe('findAll', () => {

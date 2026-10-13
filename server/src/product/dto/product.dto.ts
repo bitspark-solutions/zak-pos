@@ -3,6 +3,7 @@ import {
   IsNumber,
   IsOptional,
   IsBoolean,
+  IsArray,
   Min,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
@@ -11,8 +12,24 @@ export class CreateProductDto {
   @IsString()
   name: string;
 
+  // Optional: when omitted/blank the service auto-generates a unique SKU
+  // (same scheme as the product-import commit path).
   @IsString()
-  sku: string;
+  @IsOptional()
+  sku?: string;
+
+  // Optional scanned barcode. Accepted as a single string for the common
+  // "scan-to-add" flow; mirrored into `barcodes` on the service side.
+  @IsString()
+  @IsOptional()
+  barcode?: string;
+
+  // Optional set of barcode values. Only pure-digit values are kept
+  // (matches the import pipeline's parseBarcodeList rule).
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  barcodes?: string[];
 
   @IsString()
   @IsOptional()
@@ -115,4 +132,9 @@ export class ProductQueryDto {
 export class BarcodeLookupDto {
   @IsString()
   barcode: string;
+}
+
+export class AttachBarcodeDto {
+  @IsString()
+  value: string;
 }
