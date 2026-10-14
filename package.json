@@ -1,4 +1,7 @@
 {
+  "name": "zak-pos",
+  "private": true,
+  "license": "MIT",
   "dependencies": {
     "auth0": "^5.0.0",
     "passport-auth0": "^1.4.4"
