@@ -34,14 +34,16 @@ dist/
 build/
 *.tsbuildinfo
 
-# Environment files
+# Environment files — real .env files stay ignored, but committed templates
+# (.env.example) are trackable on purpose.
 .env
 .env.local
 .env.*.local
 .env.*
 *.env
-.env.*
-env.example
+!.env.example
+!server/.env.example
+!env.example
 
 # Logs
 logs/
@@ -284,7 +286,6 @@ Thumbs.db
 # Sensitive files (auto-detected)
 .env
 .env.dev
-.env.example
 .env.prod
 node_modules
 

@@ -21,7 +21,7 @@ COMPOSE_PROD := docker-compose.prod.yml
 
 # Environment files
 ENV_FILE := .env
-ENV_EXAMPLE := env.example
+ENV_EXAMPLE := .env.example
 
 # Directories
 DATA_DIR := ./data
