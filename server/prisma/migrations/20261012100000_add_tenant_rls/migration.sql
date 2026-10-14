@@ -23,11 +23,15 @@ BEGIN
     'sales', 'sale_lines', 'payments', 'invoices',
     'store_credits', 'gift_cards', 'promotions', 'events', 'audit_logs'
   ] LOOP
-    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
-    EXECUTE format(
-      'CREATE POLICY %I ON public.%I USING ("tenantId" = app_tenant_id()) WITH CHECK ("tenantId" = app_tenant_id())',
-      t || '_tenant_isolation', t
-    );
+    -- Guarded: a fresh clone's table set lags this migration until
+    -- 20261015000000_add_inventory_movements; skip anything not yet created.
+    IF to_regclass('public.' || t) IS NOT NULL THEN
+      EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
+      EXECUTE format(
+        'CREATE POLICY %I ON public.%I USING ("tenantId" = app_tenant_id()) WITH CHECK ("tenantId" = app_tenant_id())',
+        t || '_tenant_isolation', t
+      );
+    END IF;
   END LOOP;
 END
 $$;
@@ -208,7 +212,9 @@ BEGIN
     'inventory', 'purchases', 'cash_sessions', 'purchase_lines',
     'purchase_returns', 'returns', 'cash_movements'
   ] LOOP
-    EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON public.%I TO zakpos_app', t);
+    IF to_regclass('public.' || t) IS NOT NULL THEN
+      EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON public.%I TO zakpos_app', t);
+    END IF;
   END LOOP;
 END
 $$;
