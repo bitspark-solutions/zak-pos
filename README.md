@@ -4,6 +4,22 @@
 
 Built for shopkeepers (BD-flavored out of the box: BDT pricing, bKash/Nagad payment methods) and for developers who want to see a serious NestJS + Prisma multi-tenant monorepo done properly.
 
+## Screenshots
+
+Web POS — search or scan a barcode, cart lines land instantly:
+
+![Web POS with cart](docs/screenshots/pos-cart.png)
+
+Server-confirmed checkout → 80 mm PDF receipt / invoice:
+
+![Checkout confirmation](docs/screenshots/pos-checkout.png)
+
+Receipts ledger:
+
+![Receipts](docs/screenshots/receipts.png)
+
+*(Captured from the seeded demo tenant via `./scripts/seed-demo.sh`.)*
+
 ## Features
 
 Verified in code and tests on this repo — everything below ships in the API/client/mobile builds:
