@@ -1,3 +1,5 @@
+import { getAuth0SessionSecret } from '../config/env';
+
 export const auth0Config = {
   domain: process.env.AUTH0_DOMAIN || '',
   clientId: process.env.AUTH0_CLIENT_ID || '',
@@ -7,8 +9,9 @@ export const auth0Config = {
     ? `https://${process.env.AUTH0_DOMAIN}`
     : '',
   baseURL: process.env.AUTH0_BASE_URL || 'http://localhost:39847',
-  secret:
-    process.env.AUTH0_SECRET || 'zakpos-auth0-secret-key-change-in-production',
+  // Fail-fast: when Auth0 is configured a real AUTH0_SECRET is mandatory;
+  // when it is not configured the feature is simply disabled (empty value).
+  secret: getAuth0SessionSecret(),
   connection:
     process.env.AUTH0_CONNECTION || 'Username-Password-Authentication',
   // Management API audience must end with a slash; request paths must not double one

@@ -3,14 +3,19 @@ import { config } from 'dotenv';
 // Load environment variables for testing
 config({ path: '.env.test' });
 
+// Set test environment variables at module scope — jest runs this setup
+// file BEFORE importing each test file, and Nest @Module metadata (e.g.
+// JwtModule.register with the fail-fast getJwtSecret()) is evaluated at
+// import time. Assigning inside beforeAll() would be too late.
+process.env.NODE_ENV = 'test';
+process.env.JWT_SECRET = 'test-jwt-secret-key';
+process.env.JWT_EXPIRES_IN = '1h';
+process.env.DATABASE_URL =
+  'postgresql://postgres:postgres123@localhost:47821/zakpos_dev';
+
 // Global test setup
 beforeAll(async () => {
-  // Set test environment variables
-  process.env.NODE_ENV = 'test';
-  process.env.JWT_SECRET = 'test-jwt-secret-key';
-  process.env.JWT_EXPIRES_IN = '1h';
-  process.env.DATABASE_URL =
-    'postgresql://postgres:postgres123@localhost:47821/zakpos_dev';
+  // (env vars already set at module scope above)
 });
 
 afterAll(async () => {

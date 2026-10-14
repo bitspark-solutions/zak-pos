@@ -11,6 +11,7 @@ import { PermissionsGuard } from './guards/permissions.guard';
 import { DeviceService } from './device.service';
 import { SessionService } from './session.service';
 import { TenantService } from './tenant.service';
+import { getJwtSecret } from '../config/env';
 import { UsersModule } from '../users/users.module';
 import { DatabaseModule } from '../database/database.module';
 import { InvitationsModule } from '../invitations/invitations.module';
@@ -22,7 +23,7 @@ import { InvitationsModule } from '../invitations/invitations.module';
     InvitationsModule,
     PassportModule,
     JwtModule.register({
-      secret: process.env.JWT_SECRET || 'your-secret-key',
+      secret: getJwtSecret(),
       signOptions: {
         expiresIn: (process.env.JWT_EXPIRES_IN ||
           '7d') as JwtSignOptions['expiresIn'],

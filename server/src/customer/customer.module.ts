@@ -4,6 +4,7 @@ import { PassportModule } from '@nestjs/passport';
 import { DatabaseModule } from '../database/database.module';
 import { InvoiceModule } from '../invoice/invoice.module';
 import { Auth0Service } from '../auth/auth0.service';
+import { getJwtSecret } from '../config/env';
 import { CustomerController, BusinessController } from './customer.controller';
 import { CustomerMeController } from './customer-me.controller';
 import { CustomerAuthController } from './customer-auth.controller';
@@ -26,10 +27,11 @@ import type { CustomerOtpProvider } from './otp/customer-otp-provider.interface'
 @Module({
   imports: [
     DatabaseModule,
+    // NOTE: JWT secret comes from getJwtSecret() — fail-fast, no fallback.
     InvoiceModule,
     PassportModule,
     JwtModule.register({
-      secret: process.env.JWT_SECRET || 'your-secret-key',
+      secret: getJwtSecret(),
       signOptions: {
         expiresIn: (process.env.JWT_EXPIRES_IN ||
           '7d') as JwtSignOptions['expiresIn'],
