@@ -105,6 +105,11 @@ export class SalesService {
       throw new BadRequestException('Cannot commit empty cart');
     }
 
+    const allowedMethods = ['cash', 'card', 'bkash', 'nagad', 'bank_transfer'];
+    if (!allowedMethods.includes(dto.paymentMethod)) {
+      throw new BadRequestException('A valid paymentMethod is required');
+    }
+
     // Verify payment amount
     const amountTendered = dto.amountTendered || cart.total;
     if (amountTendered < cart.total) {

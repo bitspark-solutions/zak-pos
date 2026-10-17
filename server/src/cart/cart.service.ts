@@ -111,6 +111,10 @@ export class CartService {
       throw new BadRequestException('Cannot modify tendered or completed cart');
     }
 
+    if (!Number.isInteger(addLineDto.qty) || addLineDto.qty < 1) {
+      throw new BadRequestException('qty must be a positive integer');
+    }
+
     // Get product details
     let product: IProductWithDetails | null;
     if (addLineDto.barcode) {

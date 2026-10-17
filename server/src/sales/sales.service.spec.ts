@@ -287,6 +287,14 @@ describe('SalesService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
+    it('should throw BadRequestException if paymentMethod is missing', async () => {
+      mockCartService.findByToken.mockResolvedValue(mockCart);
+
+      await expect(
+        service.commitSale({ cartToken: 'cart-token-1' } as never, 'tenant-1'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
     it('should throw BadRequestException if tendered amount is less than total', async () => {
       mockCartService.findByToken.mockResolvedValue(mockCart);
 

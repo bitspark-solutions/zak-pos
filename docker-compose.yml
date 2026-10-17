@@ -100,7 +100,9 @@ services:
     env_file:
       - ./server/.env
     environment:
-      NODE_ENV: production
+      # development (not production) so the mock customer-OTP provider stays
+      # usable on this dev stack — it fail-closes in production by design.
+      NODE_ENV: development
       API_PORT: "3000"
       PORT: "3000"
       DATABASE_URL: "postgresql://postgres:postgres123@postgres:5432/zakpos_dev?schema=public"

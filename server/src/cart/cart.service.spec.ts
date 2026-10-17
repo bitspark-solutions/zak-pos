@@ -186,6 +186,26 @@ describe('CartService', () => {
       );
     });
 
+    it('should reject a non-integer or missing qty', async () => {
+      const cart = await service.create({ shopId: 'shop-1' }, TENANT, CASHIER);
+
+      await expect(
+        service.addLine(
+          cart.token,
+          { productId: 'product-1' } as never,
+          TENANT,
+        ),
+      ).rejects.toThrow('qty must be a positive integer');
+
+      await expect(
+        service.addLine(
+          cart.token,
+          { productId: 'product-1', qty: 1.5 } as never,
+          TENANT,
+        ),
+      ).rejects.toThrow('qty must be a positive integer');
+    });
+
     it('should throw when product not found', async () => {
       const cart = await service.create({ shopId: 'shop-1' }, TENANT, CASHIER);
 
