@@ -38,7 +38,7 @@ scikit-image==0.25.2
 python-multipart==0.0.20
 
 # PDF text extraction (catalog onboarding /extract-products)
-pypdf==5.1.0
+pypdf==6.20.1
 
 # Development and testing
 pytest==8.3.4
