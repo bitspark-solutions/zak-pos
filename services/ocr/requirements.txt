@@ -10,7 +10,7 @@ torchvision>=0.17.0
 # Pinned: transformers >=4.42 removed string torch_dtype handling and 5.x is
 # not compatible with the trocr-small-printed checkpoint we load; 4.55.4 is
 # the last 4.x release that loads it cleanly.
-transformers==4.55.4
+transformers==4.57.6
 # microsoft/trocr-* tokenizer files need these at from_pretrained time
 tiktoken>=0.8.0
 sentencepiece>=0.2.0
