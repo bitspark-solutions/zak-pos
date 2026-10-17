@@ -2,7 +2,7 @@
 # Deliberately excludes torch/transformers/pytesseract/opencv - app code guards
 # those imports; the suite mocks OCRService.
 fastapi==0.115.8
-pydantic==2.10.6
+pydantic==2.14.1
 pydantic-settings==2.7.1
 httpx==0.28.1
 python-multipart==0.0.20
